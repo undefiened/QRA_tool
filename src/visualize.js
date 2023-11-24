@@ -120,6 +120,9 @@ class Visualization {
         this.#useRTree = true;
         this.#rtreeData = null;
 
+        // setting current year at footer
+        document.getElementById("currentYear").textContent = new Date().getFullYear();;
+
         // running initialization methods
         this.#initializeData();
         this.#initializeMap();
