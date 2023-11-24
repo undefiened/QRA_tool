@@ -1,0 +1,54 @@
+* {
+    box-sizing: border-box;
+    color: #777;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+}
+
+.header {
+    font-family: sans-serif;
+}
+
+.map-row {
+    height: 640px;
+}
+
+.map-col {
+    border-radius: 2%;
+}
+
+.color-column {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: center;
+    width: 10px;
+    height: 10px;
+    margin: 13px;
+    border-radius: 50%;
+    border: 1px solid black;
+}
+
+
+#totals-table td {
+border-bottom-width: 0;
+}
+
+#totals-table {
+margin-bottom: 0;
+}
+
+.table-accented {
+    color: #000;
+}
+
+.segment-color-col {
+    min-width: 50px;
+}
+
+a.footer-link {
+    display: inline;
+}

@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link rel="stylesheet" href="./styles.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD"
+          crossorigin="anonymous">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css"
+     integrity="sha256-kLaT2GOSpHechhsozzB+flnD+zUyjE2LlfWPgU04xyI="
+     crossorigin=""/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.css"
+          integrity="sha512-qveKnGrvOChbSzAdtSs8p69eoLegyh+1hwOMbmpCViIwj7rn4oJjdmMvWOuyQlTOZgTlZA0N2PXA7iA8/2TUYA=="
+          crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
+          integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA=="
+          crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <title>UAV Risk Tool</title>
+</head>
+<body>
+    <!--Header and navbar-->
+    <header class="header mb-3 p-2 bg-dark" data-bs-theme="dark">
+        <nav class="navbar navbar-expand-md">
+            <div class="container-fluid">
+                <span class="navbar-brand mb-0 h1">UAV Quantiative Risk Assessment Tool</span>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                    <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                        <!-- <li class="nav-item"> -->
+                          <a class="nav-link active" aria-current="page" target="_blank" href="https://sites.google.com/view/aeargroup/home">by AEAR Group</a> <a href="https://liu.se" target="_blank" class="nav-link active" aria-current="page">@ Linköping University</a>
+                        <!-- </li> -->
+                  </ul>
+                </div>
+            </div>
+        </nav>
+</header>
+
+    <!--Total statistics section-->
+    <section class="mb-0 ps-5 pe-5">
+        <div class="table-responsive">
+            <table id="totals-table" class="table table-border">
+              <thead>
+                <tr id="totals-table-header" class="text-center">
+                  <th colspan="2" scope="col" class="table-light">
+                      <div id="spinner-container" style="display: none;">
+                          <div class="d-flex align-items-center">
+                              <strong>Computing...</strong>
+
+                          </div>
+                      </div>
+                  </th>
+                  <th colspan="5" scope="col" class="table-warning">Ground Risk</th>
+                  <th colspan="2" scope="col" class="table-primary">Air Risk</th>
+                </tr>
+                <tr class="">
+                  <th scope="col" class="table-light">Length (m)</th>
+                  <th scope="col" class="table-light">Mission duration (min)</th>
+                  <th scope="col" class="table-warning">Exposed population (ppl)</th>
+                  <th scope="col" class="table-warning">Affected ground area (m²)</th>
+                  <th scope="col" class="table-warning">Linear Density (ppl/m)</th>
+                  <th scope="col" class="table-warning">Average Exposed Population Density (ppl/m²)</th>
+                  <th scope="col" class="table-warning">Maximum Exposed Population Density (ppl/m²)</th>
+                  <th scope="col" class="table-primary">NMAC/1 million flight hours <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip"
+                    title="The expected number of Near Mid-Air Collisions (NMAC) per 1 million flight hours. This metric is independent on the actual mission duration, and is useful when the drone needs to fly along the route for a fixed amount of time."></i></sup></th>
+                  <th scope="col" class="table-primary">NMAC of the mission
+                    <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip"
+                        title="The expected number of Near Mid-Air Collisions (NMAC) during the entire mission from start to finish."></i></sup></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                    <td class="table-light">0</td>
+                    <td class="table-light">0</td>
+                    <td class="table-warning">0</td>
+                    <td class="table-warning">0</td>
+                    <td class="table-warning">0</td>
+                    <td class="table-warning">0</td>
+                    <td class="table-warning">0</td>
+                    <td class="table-primary">0</td>
+                    <td class="table-primary">0</td>
+                </tr>
+              </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!--Leaflet Map section-->
+    <section class="mb-3 ps-5 pe-5">
+        <div class="container-fluid map-container">
+            <div class="row map-row">
+                <div id="map" class="col border map-col"></div>
+            </div>
+            <div class="row mt-5">
+                <div class="col">
+                    <div id="nmac-slider" class=""></div>
+                </div>
+                <div class="col">
+                    <div id="uav-speed-slider" class=""></div>
+                </div>
+                <div class="col">
+                    <div id="global-altitude-slider" class=""></div>
+                </div>
+                <div class="col">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" value="" id="segment-extension">
+                      <label class="form-check-label" for="segment-extension">Enable flyaway scenarios <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="When enabled, the flightplan segments are extended to account for the scenario when drone loses control and continues flying forward instead of turning. These scenarios are introduced in the latest SORA draft."></i></sup></label>
+                    </div>
+                    <div></div>
+                </div>
+                <div class="col">
+                    <div id="extension-slider" class=""></div>
+                </div>
+            </div>
+            <div class="row border-bottom">
+                <div class="col">NMAC distance (m) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="The horizontal distance between two aircraft which is considered to be the threshold for Near Mid-Air Collision (NMAC)."></i></sup></div>
+                <div class="col">UAV speed (km/h)</div>
+                <div class="col">Mission altitude (m) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Mission altitude defines the width of the ground risk buffer (in accordance with 1:1 rule from EASA's AMC/GM to EU Regulation 2021/947). This slider sets the default altitude of waypoints and does not affect waypoints that have manually changed altitude."></i></sup></div>
+                <div class="col"></div>
+                <div class="col">Flyaway distance (m)</div>
+            </div>
+        </div>
+    </section>
+
+    <!--Segments table section-->
+    <section class="mb-1 pt-2 pb-2 ps-5 pe-5">
+        <h2 class="pb-2">Statistics per segment</h2>
+        <div class="table-responsive">
+            <table id="segments-table" class="table table-hover table-borderless table-striped">
+                <thead>
+                    <tr id="segment-totals-table-header" class="text-center">
+                        <th colspan="1" scope="col"></th>
+                        <th colspan="4" scope="col" class="table-light"></th>
+                        <th colspan="5" scope="col" class="table-warning">Ground Risk</th>
+                        <th colspan="2" scope="col" class="table-primary">Air Risk</th>
+                    </tr>
+                    <tr>
+                      <th scope="col" class="segment-color-col"></th>
+
+                      <th scope="col" class="table-light">#</th>
+                      <th scope="col" class="table-light">Altitude (m)</th>
+                      <th scope="col" class="table-light">Length (m)</th>
+                      <th scope="col" class="table-light">Duration (m)</th>
+
+                      <th scope="col" class="table-warning">Exposed Population (ppl)</th>
+                      <th scope="col" class="table-warning">Affected ground area (m²)</th>
+                      <th scope="col" class="table-warning">Linear Density (ppl/m)</th>
+                      <th scope="col" class="table-warning">Average Exposed Population Density (ppl/m²)</th>
+                      <th scope="col" class="table-warning">Maximum Exposed Population Density (ppl/m²)</th>
+
+                      <th scope="col" class="table-primary">NMAC/1 million flight hours</th>
+                      <th scope="col" class="table-primary">NMAC of the mission</th>
+                    </tr>
+                </thead>
+                <tbody class="table-group-divider">
+                    <!-- Rows will be dynamically added here -->
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="mb-1 pt-2 pb-2 ps-5 pe-5">
+        <h2 class="pb-2">Instructions</h2>
+        <div>
+            <ul>
+                <li>Double-click on the map to add waypoints</li>
+                <li>Move waypoints to adjust the route</li>
+                <li>Click on a waypoint to a popup menu where:</li>
+                <ul>
+                    <li>the waypoint's altitude can be adjusted,</li>
+                    <li>the adjacent segment can be splitted,</li>
+                    <li>the waypoint can be removed.</li>
+                </ul>
+                <li>Switch between ground risk and air risk views using buttons in the top right corner of the map</li>
+                <li>Change the Near Mid-Air Collision distance and the drone speed using the sliders below the map</li>
+                <li>The width of the ground risk buffer is defined by the altitude (adjusted with the slider for the whole route, or for individual waypoints in the popup) in accordance with 1:1 rule from EASA's AMC/GM to EU Regulation 2021/947.</li>
+                <li>Enable flyaway scenarios (in line with the latest SORA draft) and set the flyaway distance</li>
+                <li>Near Mid-Air Collision rate is estimated using an approach similar to the approach described in Section III.D of <a href="https://www.researchgate.net/publication/371047845_Quantitative_air_risk_assessment_for_a_drone_inspection_mission_along_fast-train_lines">"Quantitative air risk assessment for a drone inspection mission along fast-train lines"</a> paper.</li>
+                <li>For all questions contact <a href="mailto:leonid.sedov@liu.se">leonid.sedov@liu.se</a>.</li>
+            </ul>
+        </div>
+    </section>
+
+    <!--Footer section-->
+    <footer class="p-5 text-center text-lg-start bg-dark text-muted">
+        <div class="row">
+            <div class="col"><h2>UAV Quantitative Risk Assessment Tool</h2></div>
+        </div>
+        <div class="row">
+            <!-- <div class="col"> -->
+                <div>
+                    <a class="nav-link active footer-link" aria-current="page" target="_blank" href="https://sites.google.com/view/aeargroup/home">&copy; AEAR group</a> 
+                    <a class="nav-link active footer-link" aria-current="page" target="_blank" href="https://liu.se">@ Linköping University</a>
+                    <hr>
+                    <div> For all questions contact <a href="mailto:leonid.sedov@liu.se">leonid.sedov@liu.se</a>.</div>
+                </div>
+            <!-- </div> -->
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"
+            integrity="sha384-w76AqPfDkMBDXo30jS1Sgez6pr3x5MlQ1ZAGC+nuZB+EYdgRZgiwxhTBTkF7CXvN"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"
+            integrity="sha384-oBqDVmMz9ATKxIep9tiCxS/Z9fNfEXiDAYTujMAeBAsjFuCZSmKbSSUnQlmh/jp3"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.min.js"
+            integrity="sha384-mQ93GR66B00ZXjt0YO5KlohRA5SY2XofN4zfuZxLkoj1gXtW8ANNCe9d5Y3eG5eD"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/nouislider"></script>
+    <script src='https://unpkg.com/@turf/turf@6/turf.min.js'></script>
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"
+     integrity="sha256-WBkoXOwTeyKclOHuWtc+i2uENFpDZ9YPdf5Hf+D7ewM="
+     crossorigin=""></script>
+    <script src="https://cdn.jsdelivr.net/npm/polyclip-ts@0.16.3/dist/polyclip-ts.umd.min.js"
+            integrity="sha256-R9PIvOdnu77DhE4+J3spCNaZOt5nRQVAdKLGG5anMH8="
+            crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/color-name-list/10.10.0/colornames.bestof.umd.min.js"
+            integrity="sha512-m5w6Bf9ObXQ2MBN9X9W+PB32G2VWo7yxkS2ste+Gzh1BN7anTceykXZ6FeSADuy+qSC5V/N53JSBGl7807MWqQ=="
+            crossorigin="anonymous"
+            referrerpolicy="no-referrer"></script>
+    <script src="https://cdn.jsdelivr.net/npm/rbush@3.0.1/rbush.min.js"
+            integrity="sha256-GpFOulAiqUPlBnN3na4vzaONuTRLAhRiecIsrEjkCqM="
+            crossorigin="anonymous"></script>
+    <script type="module" src="bundle.js"></script>
+</body>
+</html>

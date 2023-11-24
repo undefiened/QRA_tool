@@ -1,0 +1,23 @@
+{
+  "name": "uav_risk",
+  "version": "1.0.0",
+  "description": "A tool for determining the number of people at risk of flying drones falling, as well as computing the probability of drones colliding with other aircraft.",
+  "main": "script.js",
+  "scripts": {
+    "test": "jest --coverage ./tests"
+  },
+  "keywords": [
+    "UAV",
+    "collision",
+    "UTM"
+  ],
+  "author": "Hardy Hasan",
+  "license": "ISC",
+  "dependencies": {
+    "nouislider": "^15.7.1"
+  },
+  "devDependencies": {
+    "webpack": "^5.88.1",
+    "webpack-cli": "^5.1.4"
+  }
+}
