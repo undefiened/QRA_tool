@@ -26,9 +26,21 @@ import { Visualization } from './src/visualize.js';
  *  Starts the application.
  */
 function main() {
-    let visualization = new Visualization();
+    let default_area = "stockholm_area";
+    let visualization = new Visualization(default_area);
+
+    $(document).ready(function() {
+        $('input[name="area_switcher"]').on('change', function() {
+            visualization.deinitializeMap();
+            visualization = new Visualization(this.id);
+        });
+    });
 }
 
 main();
+
+
+
+
 
 // ======================================= END OF FILE =======================================

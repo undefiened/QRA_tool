@@ -26,16 +26,37 @@ one object and saved into a file.
 """
 
 import concurrent
+import json
+from shapely.geometry import shape, Polygon
 
 from traffic.data import opensky
 
 # ICAO names of the airports.
-AIRPORTS = ["ESSB"]
+AIRPORTS = ["ESGG"] # ESSB
+boundary_file = './data/ockero_boundary.geojson'
+
+def load_boundary(filename):
+    # Load GeoJSON data from a file
+    with open(filename, 'r') as f:
+        geojson_data = json.load(f)
+
+    # Extract the geometry from the GeoJSON data
+    geometry = geojson_data['features'][0]['geometry']
+
+    # Convert the geometry to a shapely Polygon
+    polygon = shape(geometry)
+
+    # Check if the geometry is a polygon
+    if isinstance(polygon, Polygon):
+        print("Loaded a shapely polygon:", polygon)
+    else:
+        print("The loaded geometry is not a polygon.")
+
 
 def get_data(airport):
     """Queries flights data for one month for given airport, both departures and arrivals."""
     try:
-        traffic_data = opensky.history(start="2023-05-01 00:00", stop="2023-05-08 00:00", airport=airport,)
+        traffic_data = opensky.history(start="2023-05-01 00:00", stop="2023-05-08 00:00", airport=airport, bounds=load_boundary(boundary_file))
     except:
         print("Error occurred! No data queried.")
     

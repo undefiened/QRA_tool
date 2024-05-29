@@ -46,8 +46,8 @@ def write_file(data, path):
 
 def reduce_data(block):
     """Given a block, unnecessary information is removed."""
-    block["properties"].pop("Rutstorl")
-    block["properties"].pop("Ruta")
+    # block["properties"].pop("Rutstorl")
+    # block["properties"].pop("Ruta")
     block["properties"]["B"] = block["properties"].pop("TotBef")
 
 
@@ -73,7 +73,7 @@ def main(path, new_file_path):
 
 
 if __name__ == "__main__":
-    path, path_new = '', ''
+    path, path_new = './data/ockero_grid_manual.geojson', './data/population_ockero_dirty.geojson'
     main(path, path_new)
 
 # --------------------- END OF FILE ---------------------

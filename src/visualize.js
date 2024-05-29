@@ -24,7 +24,21 @@ let polyclip = window['polyclip-ts'];
 import * as Objects from './objects.js';
 import * as Helpers from './helpers.js';
 
-let dataUrl = "./data/population_stockholm.geojson";
+let dataUrls = {
+    "stockholm_area": "./data/population_stockholm.geojson",
+    "ockero_area": "./data/population_ockero.geojson"
+}
+
+let dataViews = {
+    "stockholm_area": [59.3118, 18.0663],
+    "ockero_area": [57.71, 11.65],
+}
+
+let dataZoomLevels = {
+    "stockholm_area": 11,
+    "ockero_area": 12,
+}
+
 let workersUrl = './src/workers.js';
 
 // Names of the map layers
@@ -83,7 +97,14 @@ class Visualization {
     #useRTree;
     #rtreeData;
 
-    constructor() {
+    #selectedArea;
+    #dataUrl;
+
+    constructor(selected_area) {
+        this.#selectedArea = selected_area;
+        this.#dataUrl = dataUrls[selected_area] ?? dataUrls["stockholm_area"];
+        console.log(this.#dataUrl);
+
         this.#rectangleWidth = 200;
         this.#nodesList = [];
         this.#edgesList = [];
@@ -137,9 +158,18 @@ class Visualization {
 
     /* ---------- Methods - private ---------- */
 
+    /**
+    * getDataUrlByAreaName method:
+    *   Returns an appropriate link to the data 
+    */
+
+    #getDataUrlByAreaName(area_name) {
+
+    }
+
     async #initializeData() {
         let promise = new Promise((resolve, reject) => {
-           $.getJSON(dataUrl, function(data, status, xhr) {
+           $.getJSON(this.#dataUrl, function(data, status, xhr) {
                 if (status === 'success') {
                     resolve(data);
                 } else {
@@ -181,12 +211,11 @@ class Visualization {
             attribution: '&copy <a href="http://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://www.lantmateriet.se/en/">Lantmäteriet</a>'
         });
 
-        let zoomLevel = 11;
         this.#map = L.map('map', {
             doubleClickZoom: false,
             preferCanvas: true,
             layers: [groundLayer]
-        }).setView([59.3118, 18.0663], zoomLevel);
+        }).setView(dataViews[this.#selectedArea], dataZoomLevels[this.#selectedArea]);
 
         let layerControl = L.control.layers({[Layers.Ground]: groundLayer, [Layers.Air]: airLayer}, null, {collapsed: false}).addTo(this.#map);
 
@@ -218,6 +247,17 @@ class Visualization {
         }.bind(this));
 
         this.#map.on('dblclick', this.#onMapDoubleClick.bind(this));
+    }
+
+    /**
+    * deinitializeMap public method:
+    *   Destroys the map so that the widget can be reinitialized.
+    */
+    deinitializeMap() {
+        // this.#map.off();
+        if(this.#map != undefined) {
+            this.#map.remove();
+        }
     }
 
     /**
@@ -732,19 +772,21 @@ class Visualization {
     */
     #initializeNMAC_slider() {
         this.#NMAC_Slider = document.getElementById('nmac-slider');
-
-        noUiSlider.create(this.#NMAC_Slider, {
-            start: [this.#NMAC_radius],
-            step: 1,
-            connect: 'lower',
-            tooltips: {
-                to: (value) => Math.round(value),
-            },
-            range: {
-              'min': [10],
-              'max': [1200]
-            },
-        });
+        
+        if (!this.#NMAC_Slider.noUiSlider) {
+            noUiSlider.create(this.#NMAC_Slider, {
+                start: [this.#NMAC_radius],
+                step: 1,
+                connect: 'lower',
+                tooltips: {
+                    to: (value) => Math.round(value),
+                },
+                range: {
+                'min': [10],
+                'max': [1200]
+                },
+            });
+        }
         this.#NMAC_Slider.noUiSlider.on('change', this.#onNMAC_sliderChange.bind(this));
     }
 
@@ -772,19 +814,20 @@ class Visualization {
     */
     #initializeEdgeExtensionSlider() {
         this.#extensionSlider = document.getElementById('extension-slider');
-
-        noUiSlider.create(this.#extensionSlider, {
-            start: [this.#segmentExtensionLength],
-            step: 1,
-            tooltips: {
-                to: (value) => Math.round(value),
-            },
-            connect: 'lower',
-            range: {
-              'min': [0],
-              'max': [1200]
-            },
-        });
+        if (!this.#extensionSlider.noUiSlider) {
+            noUiSlider.create(this.#extensionSlider, {
+                start: [this.#segmentExtensionLength],
+                step: 1,
+                tooltips: {
+                    to: (value) => Math.round(value),
+                },
+                connect: 'lower',
+                range: {
+                'min': [0],
+                'max': [1200]
+                },
+            });
+        }
         this.#extensionSlider.noUiSlider.on('change', this.#onEdgeExtensionSliderChange.bind(this));
         this.#extensionSlider.noUiSlider.disable();
     }
@@ -805,19 +848,20 @@ class Visualization {
     */
     #initializeUavSpeedSlider() {
         this.#speedSlider = document.getElementById('uav-speed-slider');
-
-        noUiSlider.create(this.#speedSlider, {
-            start: [this.#v_UA],
-            step: 0.1,
-            tooltips: {
-                to: (value) => Math.round(Helpers.convertSpeed(value)),
-            },
-            connect: 'lower',
-            range: {
-              'min': [1],
-              'max': [50]
-            },
-        });
+        if (!this.#speedSlider.noUiSlider) {
+            noUiSlider.create(this.#speedSlider, {
+                start: [this.#v_UA],
+                step: 0.1,
+                tooltips: {
+                    to: (value) => Math.round(Helpers.convertSpeed(value)),
+                },
+                connect: 'lower',
+                range: {
+                'min': [1],
+                'max': [50]
+                },
+            });
+        }
         this.#speedSlider.noUiSlider.on('change', this.#onUavSpeedSliderChange.bind(this));
     }
 
@@ -839,18 +883,20 @@ class Visualization {
     #initializeGlobalAltitudeSlider() {
         this.#globalAltitudeSlider = document.getElementById('global-altitude-slider');
 
-        noUiSlider.create(this.#globalAltitudeSlider, {
-            start: [this.#rectangleWidth],
-            step: 1,
-            tooltips: {
-                to: (value) => Math.round(value),
-            },
-            connect: 'lower',
-            range: {
-              'min': [10],
-              'max': [1200]
-            },
-        });
+        if (!this.#globalAltitudeSlider.noUiSlider) {
+            noUiSlider.create(this.#globalAltitudeSlider, {
+                start: [this.#rectangleWidth],
+                step: 1,
+                tooltips: {
+                    to: (value) => Math.round(value),
+                },
+                connect: 'lower',
+                range: {
+                'min': [10],
+                'max': [1200]
+                },
+            });
+        }
         this.#globalAltitudeSlider.noUiSlider.on('change', this.#onGlobalAltitudeSliderChange.bind(this));
     }
 
