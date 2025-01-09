@@ -26,7 +26,7 @@ import { Visualization } from './src/visualize.js';
  *  Starts the application.
  */
 function main() {
-    let default_area = "stockholm_area";
+    let default_area = "nk_area";
     let visualization = new Visualization(default_area);
 
     $(document).ready(function() {

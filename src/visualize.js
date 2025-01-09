@@ -25,16 +25,19 @@ import * as Objects from './objects.js';
 import * as Helpers from './helpers.js';
 
 let dataUrls = {
+    "nk_area": "./data/population_nk.geojson",
     "stockholm_area": "./data/population_stockholm.geojson",
     "ockero_area": "./data/population_ockero.geojson"
 }
 
 let dataViews = {
+    "nk_area": [58.5877, 16.1924],
     "stockholm_area": [59.3118, 18.0663],
     "ockero_area": [57.71, 11.65],
 }
 
 let dataZoomLevels = {
+    "nk_area": 12,
     "stockholm_area": 11,
     "ockero_area": 12,
 }
@@ -102,7 +105,7 @@ class Visualization {
 
     constructor(selected_area) {
         this.#selectedArea = selected_area;
-        this.#dataUrl = dataUrls[selected_area] ?? dataUrls["stockholm_area"];
+        this.#dataUrl = dataUrls[selected_area] ?? dataUrls["nk_area"];
         console.log(this.#dataUrl);
 
         this.#rectangleWidth = 200;
