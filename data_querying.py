@@ -32,8 +32,8 @@ from shapely.geometry import shape, Polygon
 from traffic.data import opensky
 
 # ICAO names of the airports.
-AIRPORTS = ["ESGG"] # ESSB
-boundary_file = './data/ockero_boundary.geojson'
+AIRPORTS = ["ESSW"] # ESSB
+boundary_file = './data/vastervik_extent.geojson'
 
 def load_boundary(filename):
     # Load GeoJSON data from a file
@@ -56,7 +56,8 @@ def load_boundary(filename):
 def get_data(airport):
     """Queries flights data for one month for given airport, both departures and arrivals."""
     try:
-        traffic_data = opensky.history(start="2023-05-01 00:00", stop="2023-05-08 00:00", airport=airport, bounds=load_boundary(boundary_file))
+        #start="2023-06-16 00:00", stop="2023-06-23 00:00"
+        traffic_data = opensky.history(start="2023-08-02 00:00", stop="2023-09-01 00:00", airport=airport, bounds=load_boundary(boundary_file))
     except:
         print("Error occurred! No data queried.")
     

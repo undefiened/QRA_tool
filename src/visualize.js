@@ -27,19 +27,22 @@ import * as Helpers from './helpers.js';
 let dataUrls = {
     "nk_area": "./data/population_nk.geojson",
     "stockholm_area": "./data/population_stockholm.geojson",
-    "ockero_area": "./data/population_ockero.geojson"
+    "ockero_area": "./data/population_ockero.geojson",
+    "vastervik_area": "./data/population_vastervik.geojson"
 }
 
 let dataViews = {
     "nk_area": [58.5877, 16.1924],
     "stockholm_area": [59.3118, 18.0663],
     "ockero_area": [57.71, 11.65],
+    "vastervik_area": [57.75, 16.63],
 }
 
 let dataZoomLevels = {
     "nk_area": 12,
     "stockholm_area": 11,
     "ockero_area": 12,
+    "vastervik_area": 12,
 }
 
 let workersUrl = './src/workers.js';

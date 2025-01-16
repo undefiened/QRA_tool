@@ -54,8 +54,8 @@ def reduce_data(block):
 def block_processing(block):
     """Returns total time, average speed by all GA and probability of collision for the given block."""
     polygon_coords = block['geometry']['coordinates'][0][0]
-    T, v_GA_mean = risk_calculations.get_block_data(polygon_coords)
-    prob = risk_calculations.compute_risk_prob()
+    T, v_GA_mean = 0, 0
+    prob = 0
     return T, v_GA_mean, prob
 
 
@@ -73,7 +73,7 @@ def main(path, new_file_path):
 
 
 if __name__ == "__main__":
-    path, path_new = './data/ockero_grid_manual.geojson', './data/population_ockero_dirty.geojson'
+    path, path_new = './data/vastervik.geojson', './data/population_vastervik.geojson'
     main(path, path_new)
 
 # --------------------- END OF FILE ---------------------

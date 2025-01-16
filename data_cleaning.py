@@ -16,5 +16,5 @@ def main(path, path_new):
             json.dump(data, file_new)
 
 if __name__ == "__main__":
-    path, path_new = './data/population_nk_processed_06w2.geojson', './data/population_nk.geojson'
+    path, path_new = './data/population_vastervik.geojson', './data/population_vastervik_cleaned.geojson'
     main(path, path_new)
