@@ -1,0 +1,8 @@
+{
+"type": "FeatureCollection",
+"name": "vastervik_extent",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 16.366557134683596, 57.688912338783403 ], [ 16.375257071020673, 57.918249222389406 ], [ 16.789866069419386, 57.913084277694587 ], [ 16.778546287583584, 57.683792787129235 ], [ 16.366557134683596, 57.688912338783403 ] ] ] } }
+]
+}
