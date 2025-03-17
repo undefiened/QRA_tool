@@ -48,14 +48,14 @@ def reduce_data(block):
     """Given a block, unnecessary information is removed."""
     # block["properties"].pop("Rutstorl")
     # block["properties"].pop("Ruta")
-    block["properties"]["B"] = block["properties"].pop("TotBef")
+    block["properties"]["B"] = block["properties"].pop("Totalt")
 
 
 def block_processing(block):
     """Returns total time, average speed by all GA and probability of collision for the given block."""
     polygon_coords = block['geometry']['coordinates'][0][0]
-    T, v_GA_mean = 0, 0
-    prob = 0
+    T, v_GA_mean = risk_calculations.get_block_data(polygon_coords)
+    prob = risk_calculations.compute_risk_prob()
     return T, v_GA_mean, prob
 
 
