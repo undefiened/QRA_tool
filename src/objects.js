@@ -339,6 +339,9 @@ class Edge {
     #NMAC_time;
     #NMAC_avg_speeds;
     #maxSquarePopulationDensity;
+    #firstPartyDn;
+    #firstPartyNMAC_rate;
+    #expectedFirstPartyNMAC;
     #positionInList;
     #polyline;
     #polylineColor;
@@ -362,6 +365,9 @@ class Edge {
         this.#expectedNMAC = 0;
         this.#NMAC_avg_speeds = [];
         this.#maxSquarePopulationDensity = 0;
+        this.#firstPartyDn = 0;
+        this.#firstPartyNMAC_rate = 0;
+        this.#expectedFirstPartyNMAC = 0;
         this.#v_UA = 8.34;
         this.#positionInList = positionInList;
         this.#population = 0;
@@ -505,6 +511,24 @@ class Edge {
         this.#computeNMAC_rate(T_sum, v_GA_mean, partialProb);
     }
 
+    /**
+    * computeFirstPartyNMAC_rate method:
+    *   Method that computes the 1st-party NMAC rate (drone-to-drone collision)
+    *   per million hour given the Dn sum (drone density multiplied by traffic density),
+    *   the UAV speed, and the partial probability.
+    */
+    computeFirstPartyNMAC_rate(Dn_times_density, v_UA, partialProb) {
+        // For drone-to-drone collision, both aircraft are moving at v_UA
+        // so the relative speed is sqrt(2 * v_UA^2)
+        let relativeSpeed = Math.sqrt(2 * v_UA**2);
+        let p_HC = (2 * (this.#NMAC_radius**2) * Dn_times_density * relativeSpeed) /
+                   (this.#NMAC_radius * this.#airBufferArea)
+
+        let rate = p_HC * partialProb; // nmac/second
+        this.#expectedFirstPartyNMAC = (this.#length / v_UA) * rate;
+        this.#firstPartyNMAC_rate = rate * 60 * 60 * 1e6;
+    }
+
     /* ---------- Getters ---------- */
 
     get population() {
@@ -571,6 +595,18 @@ class Edge {
         return this.#maxSquarePopulationDensity;
     }
 
+    get firstPartyDn() {
+        return this.#firstPartyDn;
+    }
+
+    get firstPartyNMAC_rate() {
+        return this.#firstPartyNMAC_rate;
+    }
+
+    get expectedFirstPartyNMAC() {
+        return this.#expectedFirstPartyNMAC;
+    }
+
     get positionInList() {
         return this.#positionInList;
     }
@@ -623,6 +659,10 @@ class Edge {
 
     set altitudeManuallyChanged(bool) {
         this.#altitudeManuallyChanged = bool;
+    }
+
+    set firstPartyDn(dn) {
+        this.#firstPartyDn = dn;
     }
 
 }

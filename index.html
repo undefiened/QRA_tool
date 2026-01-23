@@ -73,6 +73,7 @@
                   </th>
                   <th colspan="5" scope="col" class="table-warning">Ground Risk</th>
                   <th colspan="2" scope="col" class="table-primary">Air Risk</th>
+                  <th colspan="2" scope="col" class="table-success">1st-Party Risk <span style="color: red; font-weight: bold;">(experimental)</span></th>
                 </tr>
                 <tr class="">
                   <th scope="col" class="table-light">Length (m)</th>
@@ -87,6 +88,11 @@
                   <th scope="col" class="table-primary">NMAC of the mission
                     <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip"
                         title="The expected number of Near Mid-Air Collisions (NMAC) during the entire mission from start to finish."></i></sup></th>
+                  <th scope="col" class="table-success">NMAC/1 million flight hours <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip"
+                    title="The expected number of drone-to-drone Near Mid-Air Collisions per 1 million flight hours, based on drone traffic density."></i></sup></th>
+                  <th scope="col" class="table-success">NMAC of the mission
+                    <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip"
+                        title="The expected number of drone-to-drone Near Mid-Air Collisions during the entire mission."></i></sup></th>
                 </tr>
               </thead>
               <tbody>
@@ -100,6 +106,8 @@
                     <td class="table-warning">0</td>
                     <td class="table-primary">0</td>
                     <td class="table-primary">0</td>
+                    <td class="table-success">0</td>
+                    <td class="table-success">0</td>
                 </tr>
               </tbody>
             </table>
@@ -123,6 +131,9 @@
                     <div id="global-altitude-slider" class=""></div>
                 </div>
                 <div class="col">
+                    <div id="drone-density-slider" class=""></div>
+                </div>
+                <div class="col">
                     <div class="form-check">
                       <input class="form-check-input" type="checkbox" value="" id="segment-extension">
                       <label class="form-check-label" for="segment-extension">Enable flyaway scenarios <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="When enabled, the flightplan segments are extended to account for the scenario when drone loses control and continues flying forward instead of turning. These scenarios are introduced in the latest SORA draft."></i></sup></label>
@@ -137,6 +148,7 @@
                 <div class="col">NMAC distance (m) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="The horizontal distance between two aircraft which is considered to be the threshold for Near Mid-Air Collision (NMAC)."></i></sup></div>
                 <div class="col">UAV speed (km/h)</div>
                 <div class="col">Mission altitude (m) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Mission altitude defines the width of the ground risk buffer (in accordance with 1:1 rule from EASA's AMC/GM to EU Regulation 2021/947). This slider sets the default altitude of waypoints and does not affect waypoints that have manually changed altitude."></i></sup></div>
+                <div class="col">Drone traffic density <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Average number of drones in the air at any given moment. This multiplier is used for computing 1st-party risk (experimental, drone-to-drone collision risk)."></i></sup></div>
                 <div class="col"></div>
                 <div class="col">Flyaway distance (m)</div>
             </div>
@@ -154,6 +166,7 @@
                         <th colspan="4" scope="col" class="table-light"></th>
                         <th colspan="5" scope="col" class="table-warning">Ground Risk</th>
                         <th colspan="2" scope="col" class="table-primary">Air Risk</th>
+                        <th colspan="2" scope="col" class="table-success">1st-Party Risk <span style="color: red; font-weight: bold;">(experimental)</span></th>
                     </tr>
                     <tr>
                       <th scope="col" class="segment-color-col"></th>
@@ -171,6 +184,9 @@
 
                       <th scope="col" class="table-primary">NMAC/1 million flight hours</th>
                       <th scope="col" class="table-primary">NMAC of the mission</th>
+
+                      <th scope="col" class="table-success">NMAC/1 million flight hours</th>
+                      <th scope="col" class="table-success">NMAC of the mission</th>
                     </tr>
                 </thead>
                 <tbody class="table-group-divider">

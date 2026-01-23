@@ -25,8 +25,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 *   A function that styles tiles for choropleth map.
 */
 function groundStyling(feature) {
+    let value = feature.properties.B;
+    if (value === 0 || value === null || value === undefined) {
+        return { fillOpacity: 0, weight: 0, opacity: 0 };
+    }
     return {
-        fillColor: getGroundColor(feature.properties.B),
+        fillColor: getGroundColor(value),
         weight: 0,
         opacity: 1,
         color: 'CadetBlue',
@@ -40,8 +44,12 @@ function groundStyling(feature) {
 *   A function that styles tiles for choropleth map.
 */
 function airStyling(feature) {
+    let value = feature.properties.T;
+    if (value === 0 || value === null || value === undefined) {
+        return { fillOpacity: 0, weight: 0, opacity: 0 };
+    }
     return {
-        fillColor: getAirColor(feature.properties.T),
+        fillColor: getAirColor(value),
         weight: 0,
         opacity: 1,
         color: 'CadetBlue',
@@ -79,6 +87,41 @@ function getAirColor(d) {
        d > 5e-5   ? '#0099FF' :
        d > 1e-5   ? '#00CCFF' :
        d > -10   ? '#00FFCC' :
+                  '#FFEDA0';
+}
+
+/**
+* firstPartyStyling method:
+*   A function that styles tiles for choropleth map based on Dn values (1st-party risk).
+*/
+function firstPartyStyling(feature) {
+    let value = feature.properties.Dn;
+    if (value === 0 || value === null || value === undefined) {
+        return { fillOpacity: 0, weight: 0, opacity: 0 };
+    }
+    return {
+        fillColor: getFirstPartyColor(value),
+        weight: 0,
+        opacity: 1,
+        color: 'CadetBlue',
+        dashArray: '10',
+        fillOpacity: 0.5
+    };
+}
+
+/**
+* getFirstPartyColor method:
+*   A function that returns map tiles color based on Dn values (1st-party risk).
+*/
+function getFirstPartyColor(d) {
+    return d > 5e-2 ? '#004d00' :
+       d > 1e-2  ? '#006600' :
+       d > 5e-3  ? '#008000' :
+       d > 1e-3  ? '#00b300' :
+       d > 5e-4   ? '#00cc00' :
+       d > 1e-4   ? '#00e600' :
+       d > 1e-5   ? '#33ff33' :
+       d > 0   ? '#99ff99' :
                   '#FFEDA0';
 }
 
@@ -148,5 +191,5 @@ function treeBboxIntersect(buffers, tree) {
     return Ids
 }
 
-export { groundStyling, airStyling, groundBuffersStyle, airBuffersStyle, convertSpeed, createRTree, treeBboxIntersect };
+export { groundStyling, airStyling, firstPartyStyling, groundBuffersStyle, airBuffersStyle, convertSpeed, createRTree, treeBboxIntersect };
 // ======================================= END OF FILE =======================================

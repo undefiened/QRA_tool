@@ -68,6 +68,21 @@ function computeTimes(feature, airBuffers, area) {
 }
 
 /**
+* computeDroneDensities method:
+*   Given a feature and some buffers, it finds the Dn (drone density) contribution
+*   from the intersected region by the drone path, for each such path `airBuffers`.
+*   This is used for 1st-party risk (drone-to-drone collision risk).
+*/
+function computeDroneDensities(feature, airBuffers, area) {
+    let edgesAirBufferIntersections = airBuffers.map((buffer) => {return turf.intersect(buffer, feature)});
+    let dnInEdges = edgesAirBufferIntersections.map((intersection) => {
+        let dn = feature.properties.Dn || 0;
+        return intersection ? dn * (turf.area(intersection) / area) : 0;
+    });
+    return dnInEdges;
+}
+
+/**
 * Listens for messages from the Visualization.js script
 *   Given a subset of population blocks data, the ground and air buffers,
 *   node circles of each edge and the area of the block, this function
@@ -83,6 +98,7 @@ self.onmessage = function(event) {
     let edgesTimes = new Array(groundBuffers.length).fill(0);
     let edgesAverageSpeeds = new Array(groundBuffers.length).fill([]);
     let edgesMaxPopulations = new Array(groundBuffers.length).fill(0);
+    let edgesDroneDensities = new Array(groundBuffers.length).fill(0);
 
     let edgesPopulation = null;
     let circlesPopulation = null;
@@ -109,10 +125,16 @@ self.onmessage = function(event) {
                 edgesAverageSpeeds[index].push(v);
             }
         })
+
+        // Compute drone densities for 1st-party risk
+        let dnInEdges = computeDroneDensities(feature, airBuffers, area);
+        edgesDroneDensities = edgesDroneDensities.map((value, index) => {
+            return value + dnInEdges[index]
+        });
     }
     // Send the result back to the main script
     self.postMessage([edgesIntersectedPopulations, circlesIntersectedPopulations, edgesTimes,
-                      edgesAverageSpeeds, edgesMaxPopulations]);
+                      edgesAverageSpeeds, edgesMaxPopulations, edgesDroneDensities]);
 };
 
 // ======================================= END OF FILE =======================================

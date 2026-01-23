@@ -25,7 +25,7 @@ import * as Objects from './objects.js';
 import * as Helpers from './helpers.js';
 
 let dataUrls = {
-    "nk_area": "./data/population_nk.geojson",
+    "nk_area": "./data/population_nk_processed_06w2_with_D.geojson",
     "stockholm_area": "./data/population_stockholm.geojson",
     "ockero_area": "./data/population_ockero.geojson",
     "vastervik_area": "./data/population_vastervik.geojson"
@@ -50,7 +50,8 @@ let workersUrl = './src/workers.js';
 // Names of the map layers
 const Layers = {
     Ground: "Ground risk",
-    Air: "Air risk"
+    Air: "Air risk",
+    FirstParty: "1st-party risk <span style=\"color: red; font-weight: bold;\">(experimental)</span>"
 }
 
 /**
@@ -96,6 +97,11 @@ class Visualization {
     #speedSlider;
     #extensionSlider;
     #globalAltitudeSlider;
+    #droneDensitySlider;
+    #droneTrafficDensity;
+    #totalFirstPartyNMAC_rate;
+    #totalExpectedFirstPartyNMAC;
+    #totalDnSum;
 
     #population;
     #timeoutId;
@@ -128,6 +134,10 @@ class Visualization {
         this.#NMAC_radius = 50;
         this.#segmentExtensionLength = 100;
         this.#v_UA = 8.34;  // m/s
+        this.#droneTrafficDensity = 1;  // average number of drones in the air
+        this.#totalFirstPartyNMAC_rate = 0;
+        this.#totalExpectedFirstPartyNMAC = 0;
+        this.#totalDnSum = 0;
 
         this.#populationElement = document.getElementById("population");
         this.#lengthElement = document.getElementById("length");
@@ -158,6 +168,7 @@ class Visualization {
         this.#initializeEdgeExtensionSlider();
         this.#initializeUavSpeedSlider();
         this.#initializeGlobalAltitudeSlider();
+        this.#initializeDroneDensitySlider();
         this.#initializeSegmentExtensionCheckbox();
         this.#computeTotalStatistics();
     }
@@ -197,6 +208,12 @@ class Visualization {
               console.error('Error creating R-Tree of the data:', error);
             }
         }
+
+        // Calculate total Dn sum for normalizing 1st-party risk
+        this.#totalDnSum = this.#population['features'].reduce((sum, feature) => {
+            return sum + (feature.properties.Dn || 0);
+        }, 0);
+        console.log('Total Dn sum:', this.#totalDnSum);
     }
 
     /**
@@ -217,16 +234,22 @@ class Visualization {
             attribution: '&copy <a href="http://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://www.lantmateriet.se/en/">Lantmäteriet</a>'
         });
 
+        let firstPartyLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 20,
+            attribution: '&copy <a href="http://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://www.lantmateriet.se/en/">Lantmäteriet</a>'
+        });
+
         this.#map = L.map('map', {
             doubleClickZoom: false,
             preferCanvas: true,
             layers: [groundLayer]
         }).setView(dataViews[this.#selectedArea], dataZoomLevels[this.#selectedArea]);
 
-        let layerControl = L.control.layers({[Layers.Ground]: groundLayer, [Layers.Air]: airLayer}, null, {collapsed: false}).addTo(this.#map);
+        let layerControl = L.control.layers({[Layers.Ground]: groundLayer, [Layers.Air]: airLayer, [Layers.FirstParty]: firstPartyLayer}, null, {collapsed: false}).addTo(this.#map);
 
         let groundGeoJSONLayer = L.geoJSON(this.#population, {style: Helpers.groundStyling}).addTo(this.#map);
         let airGeoJSONLayer = L.geoJSON(this.#population, {style: Helpers.airStyling});
+        let firstPartyGeoJSONLayer = L.geoJSON(this.#population, {style: Helpers.firstPartyStyling});
 
         this.#groundBuffersUnionGeoJsonLayers.addTo(this.#map);
         this.#nodesGeoJsonLayersList.addTo(this.#map);
@@ -234,22 +257,26 @@ class Visualization {
 
         // Add a listener to the 'baselayerchange' event
         this.#map.on('baselayerchange', function (e) {
-            // Check which base layer was selected
+            // Remove all risk layers first
+            groundGeoJSONLayer.remove();
+            airGeoJSONLayer.remove();
+            firstPartyGeoJSONLayer.remove();
+            this.#groundBuffersUnionGeoJsonLayers.remove();
+            this.#airBuffersUnionGeoJsonLayers.remove();
+            this.#edgesGeoJsonLayersList.remove();
+
+            // Check which base layer was selected and add corresponding layers
             if (e.name === Layers.Ground) {
-                airGeoJSONLayer.remove();
-                this.#airBuffersUnionGeoJsonLayers.remove();
-                this.#edgesGeoJsonLayersList.remove();
                 groundGeoJSONLayer.addTo(this.#map);
                 this.#groundBuffersUnionGeoJsonLayers.addTo(this.#map);
-                this.#edgesGeoJsonLayersList.addTo(this.#map);
-            } else {
-                groundGeoJSONLayer.remove();
-                this.#groundBuffersUnionGeoJsonLayers.remove();
-                this.#edgesGeoJsonLayersList.remove();
+            } else if (e.name === Layers.Air) {
                 airGeoJSONLayer.addTo(this.#map);
                 this.#airBuffersUnionGeoJsonLayers.addTo(this.#map);
-                this.#edgesGeoJsonLayersList.addTo(this.#map);
+            } else if (e.name === Layers.FirstParty) {
+                firstPartyGeoJSONLayer.addTo(this.#map);
+                this.#groundBuffersUnionGeoJsonLayers.addTo(this.#map);
             }
+            this.#edgesGeoJsonLayersList.addTo(this.#map);
         }.bind(this));
 
         this.#map.on('dblclick', this.#onMapDoubleClick.bind(this));
@@ -567,6 +594,7 @@ class Visualization {
             let edgesSubsetTimes = []
             let edgesSubsetAverageSpeeds = []
             let maxPopulations = [];
+            let edgesSubsetDroneDensities = [];
             let tileArea = 10_000; // 100x100
 
             for (let i = 0; i < numWorkers; i++) {
@@ -586,13 +614,14 @@ class Visualization {
 
                 worker.onmessage = function(event) {
                     let [edgesIntersectedPopulation, circlesPopulations, edgesTimes,
-                         edgesAverageSpeeds, edgesMaxPopulations] = event.data;
+                         edgesAverageSpeeds, edgesMaxPopulations, edgesDroneDensities] = event.data;
 
                     edgesSubsetPopulations.push(edgesIntersectedPopulation);
                     edgesCirclePopulations.push(circlesPopulations);
                     edgesSubsetTimes.push(edgesTimes);
                     edgesSubsetAverageSpeeds.push(edgesAverageSpeeds);
                     maxPopulations.push(edgesMaxPopulations);
+                    edgesSubsetDroneDensities.push(edgesDroneDensities);
 
                     if (edgesSubsetPopulations.length === numWorkers) {
                         for (let j = 0; j < edges.length; j++) {
@@ -614,6 +643,12 @@ class Visualization {
                             let v_GA_mean = edgeAverageSpeeds.reduce((a, c) => a + c, 0) / edgeAverageSpeeds.length || 0;
                             let prob = this.#population.features[0].properties.p;
                             edge.computeNMAC_rate(T_sum, v_GA_mean, prob);
+
+                            // Compute 1st-party risk (drone-to-drone), normalized by total Dn sum
+                            let Dn_sum = (edgesSubsetDroneDensities.map((lst) => {return lst[j]})).reduce((a, c) => a + c, 0);
+                            let Dn_normalized = this.#totalDnSum > 0 ? Dn_sum / this.#totalDnSum : 0;
+                            edge.firstPartyDn = Dn_normalized;
+                            edge.computeFirstPartyNMAC_rate(Dn_normalized * this.#droneTrafficDensity, this.#v_UA, prob);
                         }
 
                         let totalAverageGASpeeds = this.#edgesList.reduce(function (flattenedArray, element) {
@@ -630,6 +665,14 @@ class Visualization {
                         this.#totalExpectedNMAC = (totalLength / this.#v_UA) * rate;
                         this.#totalMissionDuration = totalLength / this.#v_UA;
                         this.#totalNMAC_rate = Math.ceil(rate * 3600 * 1e6)
+
+                        // Compute total 1st-party risk
+                        let totalDn = this.#edgesList.reduce((a, c) => a + (c.firstPartyDn || 0), 0);
+                        let totalFirstParty_p_HC = (2 * this.#NMAC_radius**2 * totalDn * this.#droneTrafficDensity * Math.sqrt(2 * this.#v_UA**2)) /
+                                                   (this.#NMAC_radius * airG);
+                        let firstPartyRate = totalFirstParty_p_HC * this.#population.features[0].properties.p;
+                        this.#totalExpectedFirstPartyNMAC = (totalLength / this.#v_UA) * firstPartyRate;
+                        this.#totalFirstPartyNMAC_rate = Math.ceil(firstPartyRate * 3600 * 1e6)
 
                         this.#ongoingComputation--;
                         this.#computeTotalStatistics()
@@ -703,13 +746,14 @@ class Visualization {
         let exposedDensity = totalArea ? (totalPopulationAtRisk / totalArea).toExponential(2) : 0;
         let maxExposedDensity = this.#edgesList.reduce((a, edge) => Math.max(a, edge.maxSquarePopulationDensity), 0);
         let expectedNMAC = totalArea ? (this.#totalExpectedNMAC).toExponential(2) : 0;
+        let expectedFirstPartyNMAC = totalArea ? (this.#totalExpectedFirstPartyNMAC).toExponential(2) : 0;
         let totalTime = this.#totalMissionDuration;
 
         let cells = this.#totalsTableElement.querySelector('tbody').querySelector('tr').querySelectorAll('td');
 
         let data = [Math.ceil(totalLength), Math.ceil(totalTime/60), Math.ceil(totalPopulationAtRisk),
                     Math.ceil(totalArea), linearDensity, exposedDensity, maxExposedDensity, this.#totalNMAC_rate,
-                    expectedNMAC];
+                    expectedNMAC, this.#totalFirstPartyNMAC_rate, expectedFirstPartyNMAC];
 
         if (this.#ongoingComputation < 1) {
             for (let i = 0; i < cells.length; i++) {
@@ -735,8 +779,9 @@ class Visualization {
                               (edge.population/edge.groundArea).toExponential(2),
                               (edge.maxSquarePopulationDensity).toExponential(2)];
         let airRiskData = [Math.ceil(edge.NMAC_rate), (edge.expectedNMAC).toExponential(2)];
+        let firstPartyRiskData = [Math.ceil(edge.firstPartyNMAC_rate || 0), (edge.expectedFirstPartyNMAC || 0).toExponential(2)];
 
-        let data = generalData.concat(groundRiskData, airRiskData);
+        let data = generalData.concat(groundRiskData, airRiskData, firstPartyRiskData);
 
         if (this.#edgesList.length === rows.length) {
             // edge already exist
@@ -758,6 +803,7 @@ class Visualization {
             this.#addDataBlockToRow(newRow, generalData, 'table-light');
             this.#addDataBlockToRow(newRow, groundRiskData, 'table-warning');
             this.#addDataBlockToRow(newRow, airRiskData, 'table-primary');
+            this.#addDataBlockToRow(newRow, firstPartyRiskData, 'table-success');
             
             tableBody.appendChild(newRow);
         }
@@ -904,6 +950,40 @@ class Visualization {
             });
         }
         this.#globalAltitudeSlider.noUiSlider.on('change', this.#onGlobalAltitudeSliderChange.bind(this));
+    }
+
+    /**
+    * initializeDroneDensitySlider method:
+    *   Creates one slider for modifying the drone traffic density
+    *   (average number of drones in the air at any given moment).
+    */
+    #initializeDroneDensitySlider() {
+        this.#droneDensitySlider = document.getElementById('drone-density-slider');
+
+        if (!this.#droneDensitySlider.noUiSlider) {
+            noUiSlider.create(this.#droneDensitySlider, {
+                start: [this.#droneTrafficDensity],
+                step: 1,
+                tooltips: {
+                    to: (value) => Math.round(value),
+                },
+                connect: 'lower',
+                range: {
+                'min': [1],
+                'max': [100]
+                },
+            });
+        }
+        this.#droneDensitySlider.noUiSlider.on('change', this.#onDroneDensitySliderChange.bind(this));
+    }
+
+    /**
+    * onDroneDensitySliderChange method:
+    *   Upon slider move, updates drone traffic density and recomputes 1st-party risk.
+    */
+    #onDroneDensitySliderChange(values, handle) {
+        this.#droneTrafficDensity = Math.floor(values[handle]);
+        this.#computeRisksDebounced(this.#edgesList);
     }
 
     /**
