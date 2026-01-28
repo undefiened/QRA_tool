@@ -103,7 +103,7 @@ class Visualization {
     #droneDensitySlider;
     #droneTrafficDensity;
     #fatalityProbabilitySlider;
-    #mtbfSlider;
+    #mtbfInput;
     #totalFirstPartyNMAC_rate;
     #totalExpectedFirstPartyNMAC;
     #totalDnSum;
@@ -143,7 +143,7 @@ class Visualization {
         this.#v_UA = 8.34;  // m/s
         this.#droneTrafficDensity = 1;  // average number of drones in the air
         this.#fatalityProbability = 1.0;
-        this.#mtbfFlightHours = 10000;
+        this.#mtbfFlightHours = 10;
         this.#totalFirstPartyNMAC_rate = 0;
         this.#totalExpectedFirstPartyNMAC = 0;
         this.#totalDnSum = 0;
@@ -178,7 +178,7 @@ class Visualization {
         this.#initializeUavSpeedSlider();
         this.#initializeGlobalAltitudeSlider();
         this.#initializeFatalityProbabilitySlider();
-        this.#initializeMTBFSlider();
+        this.#initializeMTBFInput();
         this.#initializeDroneDensitySlider();
         this.#initializeSegmentExtensionCheckbox();
         this.#computeTotalStatistics();
@@ -1067,28 +1067,18 @@ class Visualization {
         this.#edgesList.map((edge) => {this.#addSegmentRow(edge)});
     }
 
-    #initializeMTBFSlider() {
-        this.#mtbfSlider = document.getElementById('mtbf-slider');
-
-        if (!this.#mtbfSlider.noUiSlider) {
-            noUiSlider.create(this.#mtbfSlider, {
-                start: [this.#mtbfFlightHours],
-                step: 1,
-                tooltips: {
-                    to: (value) => Math.round(value),
-                },
-                connect: 'lower',
-                range: {
-                    'min': [1],
-                    'max': [1000000]
-                },
-            });
+    #initializeMTBFInput() {
+        this.#mtbfInput = document.getElementById('mtbf-input');
+        if (!this.#mtbfInput) {
+            return;
         }
-        this.#mtbfSlider.noUiSlider.on('change', this.#onMTBFSliderChange.bind(this));
+        this.#mtbfInput.value = this.#mtbfFlightHours;
+        this.#mtbfInput.addEventListener('input', this.#onMTBFInputChange.bind(this));
     }
 
-    #onMTBFSliderChange(values, handle) {
-        this.#mtbfFlightHours = Math.round(values[handle]);
+    #onMTBFInputChange(event) {
+        let value = Number(event.target.value);
+        this.#mtbfFlightHours = Number.isFinite(value) && value > 0 ? value : 0;
         this.#computeTotalStatistics();
         this.#edgesList.map((edge) => {this.#addSegmentRow(edge)});
     }
