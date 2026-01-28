@@ -23,6 +23,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import * as Constants from './constants.js';
 import * as Helpers from './helpers.js';
 
+const SEGMENT_COLOR = '#0d6efd';
+
 
 /**
 * Node class
@@ -387,7 +389,7 @@ class Edge {
         let [source, destination] = this.#nodesList;
         let [sourceLatlng, destinationLatlng] = [Object.values(source.marker.getLatLng()),
                                                  Object.values(destination.marker.getLatLng())]
-        this.#polylineColor = colorNameList.pop().hex;
+        this.#polylineColor = SEGMENT_COLOR;
         this.#polyline = new L.Polyline([sourceLatlng, destinationLatlng], {
             color: this.#polylineColor,
             weight: 20,
