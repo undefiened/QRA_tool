@@ -22,6 +22,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 let polyclip = window['polyclip-ts'];
 
 import * as Objects from './objects.js';
+import * as Constants from './constants.js';
 import * as Helpers from './helpers.js';
 
 let dataUrls = {
@@ -64,6 +65,8 @@ const Layers = {
 class Visualization {
      /*-------Instance variables-------*/
 
+    static #EFR_THRESHOLD = 1e-9;
+
     #rectangleWidth;
     #nodesList;
     #edgesList;
@@ -99,9 +102,13 @@ class Visualization {
     #globalAltitudeSlider;
     #droneDensitySlider;
     #droneTrafficDensity;
+    #fatalityProbabilitySlider;
+    #mtbfSlider;
     #totalFirstPartyNMAC_rate;
     #totalExpectedFirstPartyNMAC;
     #totalDnSum;
+    #fatalityProbability;
+    #mtbfFlightHours;
 
     #population;
     #timeoutId;
@@ -135,6 +142,8 @@ class Visualization {
         this.#segmentExtensionLength = 100;
         this.#v_UA = 8.34;  // m/s
         this.#droneTrafficDensity = 1;  // average number of drones in the air
+        this.#fatalityProbability = 1.0;
+        this.#mtbfFlightHours = 10000;
         this.#totalFirstPartyNMAC_rate = 0;
         this.#totalExpectedFirstPartyNMAC = 0;
         this.#totalDnSum = 0;
@@ -168,6 +177,8 @@ class Visualization {
         this.#initializeEdgeExtensionSlider();
         this.#initializeUavSpeedSlider();
         this.#initializeGlobalAltitudeSlider();
+        this.#initializeFatalityProbabilitySlider();
+        this.#initializeMTBFSlider();
         this.#initializeDroneDensitySlider();
         this.#initializeSegmentExtensionCheckbox();
         this.#computeTotalStatistics();
@@ -742,7 +753,8 @@ class Visualization {
         totalPopulationAtRisk -= doubleComputedPopulation;
         totalArea -= doubleComputedArea;
 
-        let linearDensity = totalLength ? (totalPopulationAtRisk / totalLength).toExponential(2) : 0;
+        let efrValue = this.#computeTotalEFR();
+        let efr = efrValue.toExponential(2);
         let exposedDensity = totalArea ? (totalPopulationAtRisk / totalArea).toExponential(2) : 0;
         let maxExposedDensity = this.#edgesList.reduce((a, edge) => Math.max(a, edge.maxSquarePopulationDensity), 0);
         let expectedNMAC = totalArea ? (this.#totalExpectedNMAC).toExponential(2) : 0;
@@ -752,13 +764,14 @@ class Visualization {
         let cells = this.#totalsTableElement.querySelector('tbody').querySelector('tr').querySelectorAll('td');
 
         let data = [Math.ceil(totalLength), Math.ceil(totalTime/60), Math.ceil(totalPopulationAtRisk),
-                    Math.ceil(totalArea), linearDensity, exposedDensity, maxExposedDensity, this.#totalNMAC_rate,
+                    Math.ceil(totalArea), efr, exposedDensity, maxExposedDensity, this.#totalNMAC_rate,
                     expectedNMAC, this.#totalFirstPartyNMAC_rate, expectedFirstPartyNMAC];
 
         if (this.#ongoingComputation < 1) {
             for (let i = 0; i < cells.length; i++) {
                  cells[i].textContent = data[i];
             }
+            this.#applyEFRStyle(cells[4], efrValue);
             this.#hideSpinner();
         }
     }
@@ -774,8 +787,9 @@ class Visualization {
         
         let generalData = [edge.positionInList+1, edge.altitude, Math.ceil(edge.length),
                            Math.ceil((edge.length/this.#v_UA)/60)];
+        let segmentEFRValue = this.#computeSegmentEFR(edge);
         let groundRiskData = [Math.ceil(edge.population), Math.ceil(edge.groundArea),
-                              (edge.population/edge.length).toExponential(2),
+                              segmentEFRValue.toExponential(2),
                               (edge.population/edge.groundArea).toExponential(2),
                               (edge.maxSquarePopulationDensity).toExponential(2)];
         let airRiskData = [Math.ceil(edge.NMAC_rate), (edge.expectedNMAC).toExponential(2)];
@@ -792,6 +806,7 @@ class Visualization {
                 cells[i+1].textContent = data[i];
             }
             cells[0].style.background = edge.polylineColor;
+            this.#applyEFRStyle(cells[7], segmentEFRValue);
         } else {
             let newRow = document.createElement('tr');
 
@@ -804,6 +819,9 @@ class Visualization {
             this.#addDataBlockToRow(newRow, groundRiskData, 'table-warning');
             this.#addDataBlockToRow(newRow, airRiskData, 'table-primary');
             this.#addDataBlockToRow(newRow, firstPartyRiskData, 'table-success');
+
+            let cells = newRow.querySelectorAll('td');
+            this.#applyEFRStyle(cells[7], segmentEFRValue);
             
             tableBody.appendChild(newRow);
         }
@@ -816,6 +834,52 @@ class Visualization {
             cell.textContent = data[i];
             row.appendChild(cell);
         }
+    }
+
+    #applyEFRStyle(cell, efrValue) {
+        if (!cell) {
+            return;
+        }
+        cell.style.color = (efrValue < Visualization.#EFR_THRESHOLD) ? 'green' : 'red';
+    }
+
+    #computeSegmentD(edge) {
+        let [source, destination] = edge.nodesList;
+
+        let baseLength = edge.length - edge.extraLength;
+        let altitudeDelta = Math.abs(destination.altitude - source.altitude);
+        let altitudeChangeDistance = (altitudeDelta / Constants.altitudeChangeRationMToKm) * 1000;
+        let longEdge = baseLength >= altitudeChangeDistance && altitudeDelta !== 0;
+
+        if (source.isSmooth && longEdge) {
+            let d_start = (source.altitude / 2);
+            let d_end = (destination.altitude / 2);
+            return (d_start + d_end) / 2;
+        }
+
+        return edge.altitude / 2;
+    }
+
+    #computeSegmentEFR(edge) {
+        if (!edge.length || !this.#mtbfFlightHours) {
+            return 0;
+        }
+        let d = this.#computeSegmentD(edge);
+        return (2 * d * this.#fatalityProbability / this.#mtbfFlightHours) * (edge.population / edge.length);
+    }
+
+    #computeTotalEFR() {
+        let totalLength = this.#edgesList.reduce((a, edge) => a + edge.length, 0);
+        if (!totalLength || !this.#mtbfFlightHours) {
+            return 0;
+        }
+
+        let sumNtotTimesD = this.#edgesList.reduce((sum, edge) => {
+            return sum + (edge.population * this.#computeSegmentD(edge));
+        }, 0);
+
+        let Nexp_total = (2 / totalLength) * sumNtotTimesD;
+        return (this.#fatalityProbability / this.#mtbfFlightHours) * Nexp_total;
     }
 
     /**
@@ -975,6 +1039,58 @@ class Visualization {
             });
         }
         this.#droneDensitySlider.noUiSlider.on('change', this.#onDroneDensitySliderChange.bind(this));
+    }
+
+    #initializeFatalityProbabilitySlider() {
+        this.#fatalityProbabilitySlider = document.getElementById('fatality-probability-slider');
+
+        if (!this.#fatalityProbabilitySlider.noUiSlider) {
+            noUiSlider.create(this.#fatalityProbabilitySlider, {
+                start: [this.#fatalityProbability],
+                step: 0.01,
+                tooltips: {
+                    to: (value) => Number(value).toFixed(2),
+                },
+                connect: 'lower',
+                range: {
+                    'min': [0],
+                    'max': [1]
+                },
+            });
+        }
+        this.#fatalityProbabilitySlider.noUiSlider.on('change', this.#onFatalityProbabilitySliderChange.bind(this));
+    }
+
+    #onFatalityProbabilitySliderChange(values, handle) {
+        this.#fatalityProbability = Number(values[handle]);
+        this.#computeTotalStatistics();
+        this.#edgesList.map((edge) => {this.#addSegmentRow(edge)});
+    }
+
+    #initializeMTBFSlider() {
+        this.#mtbfSlider = document.getElementById('mtbf-slider');
+
+        if (!this.#mtbfSlider.noUiSlider) {
+            noUiSlider.create(this.#mtbfSlider, {
+                start: [this.#mtbfFlightHours],
+                step: 1,
+                tooltips: {
+                    to: (value) => Math.round(value),
+                },
+                connect: 'lower',
+                range: {
+                    'min': [1],
+                    'max': [1000000]
+                },
+            });
+        }
+        this.#mtbfSlider.noUiSlider.on('change', this.#onMTBFSliderChange.bind(this));
+    }
+
+    #onMTBFSliderChange(values, handle) {
+        this.#mtbfFlightHours = Math.round(values[handle]);
+        this.#computeTotalStatistics();
+        this.#edgesList.map((edge) => {this.#addSegmentRow(edge)});
     }
 
     /**
