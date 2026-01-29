@@ -883,7 +883,7 @@ class Visualization {
         totalPopulationAtRisk -= doubleComputedPopulation;
         totalArea -= doubleComputedArea;
 
-        let efrValue = this.#computeTotalEFR();
+        let efrValue = this.#computeTotalEFR(totalPopulationAtRisk, totalArea);
         let efr = efrValue.toExponential(2);
         let exposedDensity = totalArea ? (totalPopulationAtRisk / totalArea).toExponential(2) : 0;
         let maxExposedDensity = this.#edgesList.reduce((a, edge) => Math.max(a, edge.maxSquarePopulationDensity), 0);
@@ -995,15 +995,13 @@ class Visualization {
         return (this.#fatalityProbability / this.#mtbfFlightHours) * edge.population * (this.#computeDroneArea() / edge.groundArea);
     }
 
-    #computeTotalEFR() {
-        if (!this.#mtbfFlightHours) {
+    #computeTotalEFR(totalPopulationAtRisk, totalArea) {
+        if (!this.#mtbfFlightHours || !totalArea) {
             return 0;
         }
 
         let droneArea = this.#computeDroneArea();
-        let Nexp_total = this.#edgesList.reduce((sum, edge) => {
-            return sum + (edge.groundArea ? edge.population * droneArea / edge.groundArea : 0);
-        }, 0);
+        let Nexp_total = totalPopulationAtRisk * droneArea / totalArea;
         return (this.#fatalityProbability / this.#mtbfFlightHours) * Nexp_total;
     }
 
