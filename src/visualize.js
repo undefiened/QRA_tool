@@ -103,6 +103,8 @@ class Visualization {
     #droneDensitySlider;
     #droneTrafficDensity;
     #fatalityProbabilitySlider;
+    #droneDimensionSlider;
+    #droneDiameter;
     #mtbfInput;
     #totalFirstPartyNMAC_rate;
     #totalExpectedFirstPartyNMAC;
@@ -142,8 +144,9 @@ class Visualization {
         this.#segmentExtensionLength = 100;
         this.#v_UA = 8.34;  // m/s
         this.#droneTrafficDensity = 1;  // average number of drones in the air
-        this.#fatalityProbability = 1.0;
-        this.#mtbfFlightHours = 10;
+        this.#fatalityProbability = 0.1;
+        this.#droneDiameter = 1;  // meters
+        this.#mtbfFlightHours = 1000;
         this.#totalFirstPartyNMAC_rate = 0;
         this.#totalExpectedFirstPartyNMAC = 0;
         this.#totalDnSum = 0;
@@ -180,6 +183,7 @@ class Visualization {
         this.#initializeFatalityProbabilitySlider();
         this.#initializeMTBFInput();
         this.#initializeDroneDensitySlider();
+        this.#initializeDroneDimensionSlider();
         this.#initializeSegmentExtensionCheckbox();
         this.#computeTotalStatistics();
     }
@@ -843,42 +847,27 @@ class Visualization {
         cell.style.color = (efrValue < Visualization.#EFR_THRESHOLD) ? 'green' : 'red';
     }
 
-    #computeSegmentD(edge) {
-        let [source, destination] = edge.nodesList;
-
-        let baseLength = edge.length - edge.extraLength;
-        let altitudeDelta = Math.abs(destination.altitude - source.altitude);
-        let altitudeChangeDistance = (altitudeDelta / Constants.altitudeChangeRationMToKm) * 1000;
-        let longEdge = baseLength >= altitudeChangeDistance && altitudeDelta !== 0;
-
-        if (source.isSmooth && longEdge) {
-            let d_start = (source.altitude / 2);
-            let d_end = (destination.altitude / 2);
-            return (d_start + d_end) / 2;
-        }
-
-        return edge.altitude / 2;
+    #computeDroneArea() {
+        let radius = this.#droneDiameter / 2;
+        return Math.PI * radius * radius;
     }
 
     #computeSegmentEFR(edge) {
-        if (!edge.length || !this.#mtbfFlightHours) {
+        if (!this.#mtbfFlightHours || !edge.groundArea) {
             return 0;
         }
-        let d = this.#computeSegmentD(edge);
-        return (2 * d * this.#fatalityProbability / this.#mtbfFlightHours) * (edge.population / edge.length);
+        return (this.#fatalityProbability / this.#mtbfFlightHours) * edge.population * (this.#computeDroneArea() / edge.groundArea);
     }
 
     #computeTotalEFR() {
-        let totalLength = this.#edgesList.reduce((a, edge) => a + edge.length, 0);
-        if (!totalLength || !this.#mtbfFlightHours) {
+        if (!this.#mtbfFlightHours) {
             return 0;
         }
 
-        let sumNtotTimesD = this.#edgesList.reduce((sum, edge) => {
-            return sum + (edge.population * this.#computeSegmentD(edge));
+        let droneArea = this.#computeDroneArea();
+        let Nexp_total = this.#edgesList.reduce((sum, edge) => {
+            return sum + (edge.groundArea ? edge.population * droneArea / edge.groundArea : 0);
         }, 0);
-
-        let Nexp_total = (2 / totalLength) * sumNtotTimesD;
         return (this.#fatalityProbability / this.#mtbfFlightHours) * Nexp_total;
     }
 
@@ -1090,6 +1079,32 @@ class Visualization {
     #onDroneDensitySliderChange(values, handle) {
         this.#droneTrafficDensity = Math.floor(values[handle]);
         this.#computeRisksDebounced(this.#edgesList);
+    }
+
+    #initializeDroneDimensionSlider() {
+        this.#droneDimensionSlider = document.getElementById('drone-dimension-slider');
+
+        if (!this.#droneDimensionSlider.noUiSlider) {
+            noUiSlider.create(this.#droneDimensionSlider, {
+                start: [this.#droneDiameter],
+                step: 0.01,
+                tooltips: {
+                    to: (value) => Number(value).toFixed(2),
+                },
+                connect: 'lower',
+                range: {
+                    'min': [0.1],
+                    'max': [5]
+                },
+            });
+        }
+        this.#droneDimensionSlider.noUiSlider.on('change', this.#onDroneDimensionSliderChange.bind(this));
+    }
+
+    #onDroneDimensionSliderChange(values, handle) {
+        this.#droneDiameter = Number(values[handle]);
+        this.#computeTotalStatistics();
+        this.#edgesList.map((edge) => {this.#addSegmentRow(edge)});
     }
 
     /**
