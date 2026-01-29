@@ -83,7 +83,7 @@
                   <th scope="col" class="table-light">Mission duration (min)</th>
                   <th scope="col" class="table-warning">Exposed population (ppl)</th>
                   <th scope="col" class="table-warning">Affected ground area (m²)</th>
-                  <th scope="col" class="table-warning">Linear Density (ppl/m)</th>
+                  <th scope="col" class="table-warning">EFR (/flight hour)</th>
                   <th scope="col" class="table-warning">Average Exposed Population Density (ppl/m²)</th>
                   <th scope="col" class="table-warning">Maximum Exposed Population Density (ppl/m²)</th>
                   <th scope="col" class="table-primary">NMAC/1 million flight hours <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip"
@@ -134,6 +134,12 @@
                     <div id="global-altitude-slider" class=""></div>
                 </div>
                 <div class="col">
+                    <div id="fatality-probability-slider" class=""></div>
+                </div>
+                <div class="col">
+                    <input id="mtbf-input" type="number" class="form-control" min="0" step="1" value="10">
+                </div>
+                <div class="col">
                     <div id="drone-density-slider" class=""></div>
                 </div>
                 <div class="col">
@@ -151,6 +157,8 @@
                 <div class="col">NMAC distance (m) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="The horizontal distance between two aircraft which is considered to be the threshold for Near Mid-Air Collision (NMAC)."></i></sup></div>
                 <div class="col">UAV speed (km/h)</div>
                 <div class="col">Mission altitude (m) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Mission altitude defines the width of the ground risk buffer (in accordance with 1:1 rule from EASA's AMC/GM to EU Regulation 2021/947). This slider sets the default altitude of waypoints and does not affect waypoints that have manually changed altitude."></i></sup></div>
+                <div class="col">P (fatality probability)</div>
+                <div class="col">MTBF (flight hours)</div>
                 <div class="col">Drone traffic density <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Average number of drones in the air at any given moment. This multiplier is used for computing 1st-party risk (experimental, drone-to-drone collision risk)."></i></sup></div>
                 <div class="col"></div>
                 <div class="col">Flyaway distance (m)</div>
@@ -181,7 +189,7 @@
 
                       <th scope="col" class="table-warning">Exposed Population (ppl)</th>
                       <th scope="col" class="table-warning">Affected ground area (m²)</th>
-                      <th scope="col" class="table-warning">Linear Density (ppl/m)</th>
+                      <th scope="col" class="table-warning">EFR (/flight hour)</th>
                       <th scope="col" class="table-warning">Average Exposed Population Density (ppl/m²)</th>
                       <th scope="col" class="table-warning">Maximum Exposed Population Density (ppl/m²)</th>
 
