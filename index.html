@@ -150,15 +150,15 @@
                                 <div id="global-altitude-slider"></div>
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label">P (fatality probability)</label>
+                                <label class="form-label">P (fatality probability) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Probability that own vehicle striking a person would be fatal"></i></sup></label>
                                 <div id="fatality-probability-slider"></div>
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label">MTBF (flight hours)</label>
+                                <label class="form-label">MTBF (flight hours) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Mean Time Between Failures (MTBF) in flight hours. Represents the reliability of the own vehicle, i.e., how often the own drone is expected to fail."></i></sup></label>
                                 <input id="mtbf-input" type="number" class="form-control" min="0" step="1" value="10">
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label">Drone max diameter (m) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Maximum diameter of the drone in meters. Used to compute the drone's impact area for ground EFR calculation (drone area / exposed area ratio)."></i></sup></label>
+                                <label class="form-label">Own vehicle max dimension (m) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Maximum diameter of the drone in meters. Used to estimate the vehicle's impact area for ground EFR calculation."></i></sup></label>
                                 <div id="drone-dimension-slider"></div>
                             </div>
                         </div>
@@ -172,7 +172,7 @@
                                 <div id="nmac-slider"></div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">UAV speed (km/h)</label>
+                                <label class="form-label">Own vehicle speed (km/h)</label>
                                 <div id="uav-speed-slider"></div>
                             </div>
                         </div>
@@ -186,7 +186,7 @@
                                 <div id="nmac-slider-fp"></div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Drone traffic density <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Average number of drones in the air at any given moment. This multiplier is used for computing 1st-party risk (experimental, drone-to-drone collision risk)."></i></sup></label>
+                                <label class="form-label">Avg drone traffic density (except own vehicle) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Average number of drones in the air during the mission. This multiplier is used for computing 1st-party risk (experimental)."></i></sup></label>
                                 <div id="drone-density-slider"></div>
                             </div>
                         </div>
