@@ -94,6 +94,9 @@ class Visualization {
     #NMAC_rateElement;
     #totalsTableElement;
     #segmentsTableElement;
+    #segmentsTableContainer;
+    #toggleSegmentsTableButton;
+    #segmentsTableVisible;
     #segmentsExtensionCheckbox;
     #spinnerContainer;
     #NMAC_Slider;
@@ -159,6 +162,9 @@ class Visualization {
         this.#NMAC_rateElement = document.getElementById("nmac-rate");
         this.#totalsTableElement = document.getElementById("totals-table");
         this.#segmentsTableElement = document.getElementById("segments-table");
+        this.#segmentsTableContainer = document.getElementById("segments-table-container");
+        this.#toggleSegmentsTableButton = document.getElementById("toggle-segments-table");
+        this.#segmentsTableVisible = false;
         this.#segmentsExtensionCheckbox = document.getElementById("segment-extension");
         this.#spinnerContainer = document.getElementById('spinner-container');
 
@@ -185,6 +191,7 @@ class Visualization {
         this.#initializeDroneDensitySlider();
         this.#initializeDroneDimensionSlider();
         this.#initializeSegmentExtensionCheckbox();
+        this.#initializeSegmentsTableToggle();
         this.#computeTotalStatistics();
     }
 
@@ -1136,6 +1143,35 @@ class Visualization {
 
     #initializeSegmentExtensionCheckbox() {
         this.#segmentsExtensionCheckbox.addEventListener('change', this.#onSegmentExtensionCheckboxChange.bind(this));
+    }
+
+    #initializeSegmentsTableToggle() {
+        this.#toggleSegmentsTableButton.addEventListener('click', () => {
+            this.#segmentsTableVisible = !this.#segmentsTableVisible;
+            if (this.#segmentsTableVisible) {
+                this.#segmentsTableContainer.style.display = '';
+                this.#toggleSegmentsTableButton.textContent = 'Hide';
+                this.#applyMultiColorSegments();
+            } else {
+                this.#segmentsTableContainer.style.display = 'none';
+                this.#toggleSegmentsTableButton.textContent = 'Show';
+                this.#applySingleColorSegments();
+            }
+        });
+    }
+
+    #applyMultiColorSegments() {
+        for (let i = 0; i < this.#edgesList.length; i++) {
+            this.#edgesList[i].polylineColor = colorNameList.pop().hex;
+            this.#addSegmentRow(this.#edgesList[i]);
+        }
+    }
+
+    #applySingleColorSegments() {
+        for (let edge of this.#edgesList) {
+            edge.polylineColor = '#0d6efd';
+            this.#addSegmentRow(edge);
+        }
     }
 
     /**

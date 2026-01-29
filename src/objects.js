@@ -557,6 +557,11 @@ class Edge {
         return this.#polylineColor;
     }
 
+    set polylineColor(color) {
+        this.#polylineColor = color;
+        this.#polyline.setStyle({ color: color });
+    }
+
     get groundBuffer() {
         return this.#groundBuffer;
     }

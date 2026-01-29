@@ -172,8 +172,10 @@
 
     <!--Segments table section-->
     <section class="mb-1 pt-2 pb-2 ps-5 pe-5">
-        <h2 class="pb-2">Statistics per segment</h2>
-        <div class="table-responsive">
+        <h2 class="pb-2">Statistics per segment
+            <button id="toggle-segments-table" class="btn btn-outline-primary btn-sm ms-2">Show</button>
+        </h2>
+        <div id="segments-table-container" class="table-responsive" style="display: none;">
             <table id="segments-table" class="table table-hover table-borderless table-striped">
                 <thead>
                     <tr id="segment-totals-table-header" class="text-center">
