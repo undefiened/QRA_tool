@@ -69,3 +69,27 @@ margin-bottom: 0;
 a.footer-link {
     display: inline;
 }
+
+/* Settings tabs styling */
+.tab-content {
+    background-color: #f8f9fa;
+    min-height: 115px;
+}
+
+.tab-content .form-label {
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    color: #495057;
+}
+
+.tab-content .row {
+    align-items: start;
+}
+
+/* Position noUiSlider tooltips below the handle instead of above */
+.noUi-tooltip {
+    bottom: auto !important;
+    top: 100% !important;
+    margin-top: 5px;
+}

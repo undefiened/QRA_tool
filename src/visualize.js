@@ -100,6 +100,7 @@ class Visualization {
     #segmentsExtensionCheckbox;
     #spinnerContainer;
     #NMAC_Slider;
+    #NMAC_SliderFP;
     #speedSlider;
     #extensionSlider;
     #globalAltitudeSlider;
@@ -183,6 +184,7 @@ class Visualization {
         this.#initializeMap();
         this.#initTooltips();
         this.#initializeNMAC_slider();
+        this.#initializeNMAC_sliderFP();
         this.#initializeEdgeExtensionSlider();
         this.#initializeUavSpeedSlider();
         this.#initializeGlobalAltitudeSlider();
@@ -903,13 +905,41 @@ class Visualization {
     }
 
     /**
+    * initializeNMAC_sliderFP method:
+    *   Creates the second NMAC slider for the 1st-party risk tab, synced with the main NMAC slider.
+    */
+    #initializeNMAC_sliderFP() {
+        this.#NMAC_SliderFP = document.getElementById('nmac-slider-fp');
+
+        if (!this.#NMAC_SliderFP.noUiSlider) {
+            noUiSlider.create(this.#NMAC_SliderFP, {
+                start: [this.#NMAC_radius],
+                step: 1,
+                connect: 'lower',
+                tooltips: {
+                    to: (value) => Math.round(value),
+                },
+                range: {
+                'min': [10],
+                'max': [1200]
+                },
+            });
+        }
+        this.#NMAC_SliderFP.noUiSlider.on('change', this.#onNMAC_sliderChange.bind(this));
+    }
+
+    /**
     * onNMAC_sliderChange method:
     *   Upon sliding nmac-slider, each edge's air buffer radius is changed
     *   as well as the air buffer recomputed, the buffer union recomputed
-    *   and the stats updated.
+    *   and the stats updated. Also syncs both NMAC sliders.
     */
     #onNMAC_sliderChange(values, handle) {
         this.#NMAC_radius = Math.floor(values[handle]);
+
+        // Sync both sliders
+        this.#NMAC_Slider.noUiSlider.set(this.#NMAC_radius);
+        this.#NMAC_SliderFP.noUiSlider.set(this.#NMAC_radius);
 
         for (let edge of this.#edgesList) {
             edge.NMAC_radius = this.#NMAC_radius;

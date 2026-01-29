@@ -123,49 +123,92 @@
             <div class="row map-row">
                 <div id="map" class="col border map-col"></div>
             </div>
-            <div class="row mt-5">
-                <div class="col">
-                    <div id="nmac-slider" class=""></div>
-                </div>
-                <div class="col">
-                    <div id="uav-speed-slider" class=""></div>
-                </div>
-                <div class="col">
-                    <div id="global-altitude-slider" class=""></div>
-                </div>
-                <div class="col">
-                    <div id="fatality-probability-slider" class=""></div>
-                </div>
-                <div class="col">
-                    <input id="mtbf-input" type="number" class="form-control" min="0" step="1" value="10">
-                </div>
-                <div class="col">
-                    <div id="drone-density-slider" class=""></div>
-                </div>
-                <div class="col">
-                    <div id="drone-dimension-slider" class=""></div>
-                </div>
-                <div class="col">
-                    <div class="form-check">
-                      <input class="form-check-input" type="checkbox" value="" id="segment-extension">
-                      <label class="form-check-label" for="segment-extension">Enable flyaway scenarios <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="When enabled, the flightplan segments are extended to account for the scenario when drone loses control and continues flying forward instead of turning. These scenarios are introduced in the latest SORA draft."></i></sup></label>
+            <div class="row mt-3">
+                <!-- Tabs Navigation -->
+                <ul class="nav nav-tabs" id="settingsTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="ground-risk-tab" data-bs-toggle="tab" data-bs-target="#ground-risk" type="button" role="tab" aria-controls="ground-risk" aria-selected="true">Ground Risk Settings</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="air-risk-tab" data-bs-toggle="tab" data-bs-target="#air-risk" type="button" role="tab" aria-controls="air-risk" aria-selected="false">Air Risk Settings</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="first-party-risk-tab" data-bs-toggle="tab" data-bs-target="#first-party-risk" type="button" role="tab" aria-controls="first-party-risk" aria-selected="false">1st-Party Risk Settings</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="sora-tab" data-bs-toggle="tab" data-bs-target="#sora" type="button" role="tab" aria-controls="sora" aria-selected="false">SORA v2.5 Settings</button>
+                    </li>
+                </ul>
+
+                <!-- Tabs Content -->
+                <div class="tab-content border border-top-0 p-3" id="settingsTabsContent">
+                    <!-- Ground Risk Settings Tab -->
+                    <div class="tab-pane fade show active" id="ground-risk" role="tabpanel" aria-labelledby="ground-risk-tab">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <label class="form-label">Mission altitude (m) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Mission altitude defines the width of the ground risk buffer (in accordance with 1:1 rule from EASA's AMC/GM to EU Regulation 2021/947). This slider sets the default altitude of waypoints and does not affect waypoints that have manually changed altitude."></i></sup></label>
+                                <div id="global-altitude-slider"></div>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">P (fatality probability)</label>
+                                <div id="fatality-probability-slider"></div>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">MTBF (flight hours)</label>
+                                <input id="mtbf-input" type="number" class="form-control" min="0" step="1" value="10">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Drone max diameter (m) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Maximum diameter of the drone in meters. Used to compute the drone's impact area for ground EFR calculation (drone area / exposed area ratio)."></i></sup></label>
+                                <div id="drone-dimension-slider"></div>
+                            </div>
+                        </div>
                     </div>
-                    <div></div>
+
+                    <!-- Air Risk Settings Tab -->
+                    <div class="tab-pane fade" id="air-risk" role="tabpanel" aria-labelledby="air-risk-tab">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label class="form-label">NMAC distance (m) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="The horizontal distance between two aircraft which is considered to be the threshold for Near Mid-Air Collision (NMAC)."></i></sup></label>
+                                <div id="nmac-slider"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">UAV speed (km/h)</label>
+                                <div id="uav-speed-slider"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 1st-Party Risk Settings Tab -->
+                    <div class="tab-pane fade" id="first-party-risk" role="tabpanel" aria-labelledby="first-party-risk-tab">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label class="form-label">NMAC distance (m) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="The horizontal distance between two aircraft which is considered to be the threshold for Near Mid-Air Collision (NMAC)."></i></sup></label>
+                                <div id="nmac-slider-fp"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Drone traffic density <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Average number of drones in the air at any given moment. This multiplier is used for computing 1st-party risk (experimental, drone-to-drone collision risk)."></i></sup></label>
+                                <div id="drone-density-slider"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SORA v2.5 Settings Tab -->
+                    <div class="tab-pane fade" id="sora" role="tabpanel" aria-labelledby="sora-tab">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label class="form-label">Enable flyaway scenarios <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="When enabled, the flightplan segments are extended to account for the scenario when drone loses control and continues flying forward instead of turning. These scenarios are introduced in the latest SORA draft."></i></sup></label>
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" value="" id="segment-extension">
+                                    <label class="form-check-label" for="segment-extension">Enable</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Flyaway distance (m)</label>
+                                <div id="extension-slider"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="col">
-                    <div id="extension-slider" class=""></div>
-                </div>
-            </div>
-            <div class="row border-bottom">
-                <div class="col">NMAC distance (m) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="The horizontal distance between two aircraft which is considered to be the threshold for Near Mid-Air Collision (NMAC)."></i></sup></div>
-                <div class="col">UAV speed (km/h)</div>
-                <div class="col">Mission altitude (m) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Mission altitude defines the width of the ground risk buffer (in accordance with 1:1 rule from EASA's AMC/GM to EU Regulation 2021/947). This slider sets the default altitude of waypoints and does not affect waypoints that have manually changed altitude."></i></sup></div>
-                <div class="col">P (fatality probability)</div>
-                <div class="col">MTBF (flight hours)</div>
-                <div class="col">Drone traffic density <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Average number of drones in the air at any given moment. This multiplier is used for computing 1st-party risk (experimental, drone-to-drone collision risk)."></i></sup></div>
-                <div class="col">Drone max diameter (m) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Maximum diameter of the drone in meters. Used to compute the drone's impact area for ground EFR calculation (drone area / exposed area ratio)."></i></sup></div>
-                <div class="col"></div>
-                <div class="col">Flyaway distance (m)</div>
             </div>
         </div>
     </section>
