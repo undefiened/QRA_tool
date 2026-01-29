@@ -27,6 +27,23 @@ html, body {
 
 .header {
     font-family: sans-serif;
+    padding: 0.25rem 1rem !important;
+    margin-bottom: 0.75rem !important;
+}
+
+.header .navbar {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+}
+
+.header .navbar-brand {
+    font-size: 1.1rem;
+    margin-bottom: 0;
+}
+
+.header .nav-link {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
 }
 
 .map-row {
