@@ -215,9 +215,28 @@
 
     <!--Segments table section-->
     <section class="mb-1 pt-2 pb-2 ps-5 pe-5">
-        <h2 class="pb-2">Statistics per segment
-            <button id="toggle-segments-table" class="btn btn-outline-primary btn-sm ms-2">Show</button>
-        </h2>
+        <div class="d-flex align-items-center pb-2">
+            <h2 class="mb-0">Statistics per segment
+                <button id="toggle-segments-table" class="btn btn-outline-primary btn-sm ms-2">Show</button>
+            </h2>
+            <div class="ms-4">
+                <span class="me-2">Area selection:</span>
+                <div class="btn-group" role="group" aria-label="Area selection">
+                    <input type="radio" class="btn-check" name="area_switcher" id="nk_area" autocomplete="off" checked>
+                    <label class="btn btn-outline-primary btn-sm" for="nk_area">Norrköping</label>
+
+                    <input type="radio" class="btn-check" name="area_switcher" id="stockholm_area" autocomplete="off">
+                    <label class="btn btn-outline-primary btn-sm" for="stockholm_area">Stockholm*</label>
+
+                    <input type="radio" class="btn-check" name="area_switcher" id="ockero_area" autocomplete="off">
+                    <label class="btn btn-outline-primary btn-sm" for="ockero_area">Öckerö*</label>
+
+                    <input type="radio" class="btn-check" name="area_switcher" id="vastervik_area" autocomplete="off">
+                    <label class="btn btn-outline-primary btn-sm" for="vastervik_area">Västervik*</label>
+                </div>
+                <small class="text-muted ms-2">* air risk can be unreliable</small>
+            </div>
+        </div>
         <div id="segments-table-container" class="table-responsive" style="display: none;">
             <table id="segments-table" class="table table-hover table-borderless table-striped">
                 <thead>
@@ -257,29 +276,6 @@
     </section>
 
     <section class="mb-1 pt-2 pb-2 ps-5 pe-5">
-        <h2 class="pb-2">Area selection</h2>
-        <div class="table-responsive">
-            <div class="btn-group" role="group" aria-label="Basic radio toggle button group">
-                <input type="radio" class="btn-check" name="area_switcher" id="nk_area" autocomplete="off" checked>
-                <label class="btn btn-outline-primary" for="nk_area">Norrköping, Sweden</label>
-
-                <input type="radio" class="btn-check" name="area_switcher" id="stockholm_area" autocomplete="off">
-                <label class="btn btn-outline-primary" for="stockholm_area">Stockholm, Sweden*</label>
-                
-                <input type="radio" class="btn-check" name="area_switcher" id="ockero_area" autocomplete="off">
-                <label class="btn btn-outline-primary" for="ockero_area">Öckerö, Sweden*</label>
-
-                <input type="radio" class="btn-check" name="area_switcher" id="vastervik_area" autocomplete="off">
-                <label class="btn btn-outline-primary" for="vastervik_area">Västervik, Sweden*</label>
-            </div>
-        </div>
-        <div>
-            * - air risk can be unreliable
-        </div>
-        
-    </section>
-
-    <section class="mb-1 pt-2 pb-2 ps-5 pe-5">
         <h2 class="pb-2">Instructions</h2>
         <div>
             <ul>
@@ -296,7 +292,6 @@
                 <li>The width of the ground risk buffer is defined by the altitude (adjusted with the slider for the whole route, or for individual waypoints in the popup) in accordance with 1:1 rule from EASA's AMC/GM to EU Regulation 2021/947.</li>
                 <li>Enable flyaway scenarios (in line with the latest SORA draft) and set the flyaway distance</li>
                 <li>Near Mid-Air Collision rate is estimated using an approach similar to the approach described in Section III.D of <a href="https://www.researchgate.net/publication/371047845_Quantitative_air_risk_assessment_for_a_drone_inspection_mission_along_fast-train_lines">"Quantitative air risk assessment for a drone inspection mission along fast-train lines"</a> paper.</li>
-                <li>Only Stockholm area is available at the moment</li>
                 <li>For all questions contact <a href="mailto:leonid.sedov@liu.se">leonid.sedov@liu.se</a>.</li>
                 <li>Source code: <a target="_blank" href="https://github.com/undefiened/QRA_tool">QRA Tool</a>.</li>
             </ul>
