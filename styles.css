@@ -93,3 +93,16 @@ a.footer-link {
     top: 100% !important;
     margin-top: 5px;
 }
+
+/* Disabled 1st-party risk UI elements styling */
+.nav-link.disabled {
+    pointer-events: none;
+    background-color: #e9ecef !important;
+    color: #6c757d !important;
+}
+
+.nav-link[disabled] {
+    pointer-events: none;
+    background-color: #e9ecef !important;
+    color: #6c757d !important;
+}

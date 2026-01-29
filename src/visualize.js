@@ -124,6 +124,7 @@ class Visualization {
 
     #selectedArea;
     #dataUrl;
+    #hasFirstPartyData;
 
     constructor(selected_area) {
         this.#selectedArea = selected_area;
@@ -175,6 +176,7 @@ class Visualization {
         this.#ongoingComputation = 0;
         this.#useRTree = true;
         this.#rtreeData = null;
+        this.#hasFirstPartyData = false;
 
         // setting current year at footer
         document.getElementById("currentYear").textContent = new Date().getFullYear();;
@@ -238,6 +240,114 @@ class Visualization {
             return sum + (feature.properties.Dn || 0);
         }, 0);
         console.log('Total Dn sum:', this.#totalDnSum);
+
+        // Check if data has 1st-party risk fields (Dn field)
+        this.#checkFirstPartyDataAvailability();
+    }
+
+    /**
+    * checkFirstPartyDataAvailability method:
+    *   Checks if the loaded data has the required fields for 1st-party risk calculations (Dn field).
+    *   Updates UI elements accordingly.
+    */
+    #checkFirstPartyDataAvailability() {
+        // Check if any feature has the Dn property
+        this.#hasFirstPartyData = this.#population['features'].some(feature =>
+            feature.properties.hasOwnProperty('Dn')
+        );
+        console.log('Has first-party data:', this.#hasFirstPartyData);
+
+        if (!this.#hasFirstPartyData) {
+            this.#disableFirstPartyRiskUI();
+        } else {
+            this.#enableFirstPartyRiskUI();
+        }
+    }
+
+    /**
+    * disableFirstPartyRiskUI method:
+    *   Disables and grays out all 1st-party risk UI elements when data doesn't support it.
+    */
+    #disableFirstPartyRiskUI() {
+        // Disable 1st-party risk tab
+        const firstPartyTab = document.getElementById('first-party-risk-tab');
+        if (firstPartyTab) {
+            firstPartyTab.disabled = true;
+            firstPartyTab.classList.add('disabled');
+            firstPartyTab.style.opacity = '0.5';
+            firstPartyTab.style.cursor = 'not-allowed';
+        }
+
+        // Update labels to show "N/A for this area"
+        const totalsLabel = document.getElementById('first-party-label-totals');
+        const segmentsLabel = document.getElementById('first-party-label-segments');
+        if (totalsLabel) {
+            totalsLabel.textContent = 'N/A for this area';
+        }
+        if (segmentsLabel) {
+            segmentsLabel.textContent = 'N/A for this area';
+        }
+
+        // Gray out 1st-party risk columns in totals table
+        const totalsTableHeaders = document.querySelectorAll('#totals-table-header .table-success');
+        const totalsTableCells = document.querySelectorAll('#totals-table tbody .table-success');
+        [...totalsTableHeaders, ...totalsTableCells].forEach(element => {
+            element.style.opacity = '0.5';
+            element.style.cursor = 'not-allowed';
+            element.title = '1st-party risk data not available for this area';
+        });
+
+        // Gray out 1st-party risk columns in segments table
+        const segmentsTableHeaders = document.querySelectorAll('#segment-totals-table-header .table-success');
+        const segmentsTableCells = document.querySelectorAll('#segments-table tbody .table-success');
+        [...segmentsTableHeaders, ...segmentsTableCells].forEach(element => {
+            element.style.opacity = '0.5';
+            element.style.cursor = 'not-allowed';
+            element.title = '1st-party risk data not available for this area';
+        });
+    }
+
+    /**
+    * enableFirstPartyRiskUI method:
+    *   Enables all 1st-party risk UI elements when data supports it.
+    */
+    #enableFirstPartyRiskUI() {
+        // Enable 1st-party risk tab
+        const firstPartyTab = document.getElementById('first-party-risk-tab');
+        if (firstPartyTab) {
+            firstPartyTab.disabled = false;
+            firstPartyTab.classList.remove('disabled');
+            firstPartyTab.style.opacity = '1';
+            firstPartyTab.style.cursor = 'pointer';
+        }
+
+        // Restore labels to show "(experimental)"
+        const totalsLabel = document.getElementById('first-party-label-totals');
+        const segmentsLabel = document.getElementById('first-party-label-segments');
+        if (totalsLabel) {
+            totalsLabel.textContent = '(experimental)';
+        }
+        if (segmentsLabel) {
+            segmentsLabel.textContent = '(experimental)';
+        }
+
+        // Restore 1st-party risk columns in totals table
+        const totalsTableHeaders = document.querySelectorAll('#totals-table-header .table-success');
+        const totalsTableCells = document.querySelectorAll('#totals-table tbody .table-success');
+        [...totalsTableHeaders, ...totalsTableCells].forEach(element => {
+            element.style.opacity = '1';
+            element.style.cursor = 'default';
+            element.title = '';
+        });
+
+        // Restore 1st-party risk columns in segments table
+        const segmentsTableHeaders = document.querySelectorAll('#segment-totals-table-header .table-success');
+        const segmentsTableCells = document.querySelectorAll('#segments-table tbody .table-success');
+        [...segmentsTableHeaders, ...segmentsTableCells].forEach(element => {
+            element.style.opacity = '1';
+            element.style.cursor = 'default';
+            element.title = '';
+        });
     }
 
     /**
@@ -269,7 +379,12 @@ class Visualization {
             layers: [groundLayer]
         }).setView(dataViews[this.#selectedArea], dataZoomLevels[this.#selectedArea]);
 
-        let layerControl = L.control.layers({[Layers.Ground]: groundLayer, [Layers.Air]: airLayer, [Layers.FirstParty]: firstPartyLayer}, null, {collapsed: false}).addTo(this.#map);
+        // Conditionally add 1st-party layer to control based on data availability
+        let baseLayers = {[Layers.Ground]: groundLayer, [Layers.Air]: airLayer};
+        if (this.#hasFirstPartyData) {
+            baseLayers[Layers.FirstParty] = firstPartyLayer;
+        }
+        let layerControl = L.control.layers(baseLayers, null, {collapsed: false}).addTo(this.#map);
 
         let groundGeoJSONLayer = L.geoJSON(this.#population, {style: Helpers.groundStyling}).addTo(this.#map);
         let airGeoJSONLayer = L.geoJSON(this.#population, {style: Helpers.airStyling});
@@ -284,7 +399,9 @@ class Visualization {
             // Remove all risk layers first
             groundGeoJSONLayer.remove();
             airGeoJSONLayer.remove();
-            firstPartyGeoJSONLayer.remove();
+            if (this.#hasFirstPartyData) {
+                firstPartyGeoJSONLayer.remove();
+            }
             this.#groundBuffersUnionGeoJsonLayers.remove();
             this.#airBuffersUnionGeoJsonLayers.remove();
             this.#edgesGeoJsonLayersList.remove();
@@ -296,7 +413,7 @@ class Visualization {
             } else if (e.name === Layers.Air) {
                 airGeoJSONLayer.addTo(this.#map);
                 this.#airBuffersUnionGeoJsonLayers.addTo(this.#map);
-            } else if (e.name === Layers.FirstParty) {
+            } else if (e.name === Layers.FirstParty && this.#hasFirstPartyData) {
                 firstPartyGeoJSONLayer.addTo(this.#map);
                 this.#groundBuffersUnionGeoJsonLayers.addTo(this.#map);
             }
@@ -797,7 +914,7 @@ class Visualization {
     #addSegmentRow(edge) {
         let tableBody = this.#segmentsTableElement.querySelector('tbody')
         let rows = tableBody.querySelectorAll('tr');
-        
+
         let generalData = [edge.positionInList+1, edge.altitude, Math.ceil(edge.length),
                            Math.ceil((edge.length/this.#v_UA)/60)];
         let segmentEFRValue = this.#computeSegmentEFR(edge);
@@ -835,8 +952,18 @@ class Visualization {
 
             let cells = newRow.querySelectorAll('td');
             this.#applyEFRStyle(cells[7], segmentEFRValue);
-            
+
             tableBody.appendChild(newRow);
+
+            // Apply disabled styling to 1st-party risk cells if data not available
+            if (!this.#hasFirstPartyData) {
+                let firstPartyCells = newRow.querySelectorAll('.table-success');
+                firstPartyCells.forEach(cell => {
+                    cell.style.opacity = '0.5';
+                    cell.style.cursor = 'not-allowed';
+                    cell.title = '1st-party risk data not available for this area';
+                });
+            }
         }
     }
 
