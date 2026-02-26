@@ -519,10 +519,11 @@ class Edge {
     *   per million hour given the Dn sum (drone density multiplied by traffic density),
     *   the UAV speed, and the partial probability.
     */
-    computeFirstPartyNMAC_rate(Dn_times_density, v_UA, partialProb) {
-        // For drone-to-drone collision, both aircraft are moving at v_UA
-        // so the relative speed is sqrt(2 * v_UA^2)
-        let relativeSpeed = Math.sqrt(2 * v_UA**2);
+    computeFirstPartyNMAC_rate(Dn_times_density, v_UA, partialProb, v_other) {
+        // For drone-to-drone collision, own vehicle at v_UA, other drones at v_other
+        // so the relative speed is sqrt(v_UA^2 + v_other^2)
+        v_other = v_other !== undefined ? v_other : v_UA;
+        let relativeSpeed = Math.sqrt(v_UA**2 + v_other**2);
         let p_HC = (2 * (this.#NMAC_radius**2) * Dn_times_density * relativeSpeed) /
                    (this.#NMAC_radius * this.#airBufferArea)
 

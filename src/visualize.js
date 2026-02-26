@@ -106,6 +106,8 @@ class Visualization {
     #globalAltitudeSlider;
     #droneDensitySlider;
     #droneTrafficDensity;
+    #otherDroneSpeedSlider;
+    #otherDroneSpeed;
     #fatalityProbabilitySlider;
     #droneDimensionSlider;
     #droneDiameter;
@@ -149,6 +151,7 @@ class Visualization {
         this.#segmentExtensionLength = 100;
         this.#v_UA = 8.34;  // m/s
         this.#droneTrafficDensity = 1;  // average number of drones in the air
+        this.#otherDroneSpeed = 8.34;  // m/s, default same as v_UA
         this.#fatalityProbability = 0.1;
         this.#droneDiameter = 1;  // meters
         this.#mtbfFlightHours = 1000;
@@ -193,6 +196,7 @@ class Visualization {
         this.#initializeFatalityProbabilitySlider();
         this.#initializeMTBFInput();
         this.#initializeDroneDensitySlider();
+        this.#initializeOtherDroneSpeedSlider();
         this.#initializeDroneDimensionSlider();
         this.#initializeSegmentExtensionCheckbox();
         this.#initializeSegmentsTableToggle();
@@ -789,7 +793,7 @@ class Visualization {
                             let Dn_sum = (edgesSubsetDroneDensities.map((lst) => {return lst[j]})).reduce((a, c) => a + c, 0);
                             let Dn_normalized = this.#totalDnSum > 0 ? Dn_sum / this.#totalDnSum : 0;
                             edge.firstPartyDn = Dn_normalized;
-                            edge.computeFirstPartyNMAC_rate(Dn_normalized * this.#droneTrafficDensity, this.#v_UA, prob);
+                            edge.computeFirstPartyNMAC_rate(Dn_normalized * this.#droneTrafficDensity, this.#v_UA, prob, this.#otherDroneSpeed);
                         }
 
                         let totalAverageGASpeeds = this.#edgesList.reduce(function (flattenedArray, element) {
@@ -809,7 +813,7 @@ class Visualization {
 
                         // Compute total 1st-party risk
                         let totalDn = this.#edgesList.reduce((a, c) => a + (c.firstPartyDn || 0), 0);
-                        let totalFirstParty_p_HC = (2 * this.#NMAC_radius**2 * totalDn * this.#droneTrafficDensity * Math.sqrt(2 * this.#v_UA**2)) /
+                        let totalFirstParty_p_HC = (2 * this.#NMAC_radius**2 * totalDn * this.#droneTrafficDensity * Math.sqrt(this.#v_UA**2 + this.#otherDroneSpeed**2)) /
                                                    (this.#NMAC_radius * airG);
                         let firstPartyRate = totalFirstParty_p_HC * this.#population.features[0].properties.p;
                         this.#totalExpectedFirstPartyNMAC = (totalLength / this.#v_UA) * firstPartyRate;
@@ -1240,6 +1244,38 @@ class Visualization {
     */
     #onDroneDensitySliderChange(values, handle) {
         this.#droneTrafficDensity = Math.floor(values[handle]);
+        this.#computeRisksDebounced(this.#edgesList);
+    }
+
+    /**
+    * initializeOtherDroneSpeedSlider method:
+    *   Creates a slider for modifying the average speed of other drones, in km/h.
+    */
+    #initializeOtherDroneSpeedSlider() {
+        this.#otherDroneSpeedSlider = document.getElementById('other-drone-speed-slider');
+        if (!this.#otherDroneSpeedSlider.noUiSlider) {
+            noUiSlider.create(this.#otherDroneSpeedSlider, {
+                start: [this.#otherDroneSpeed],
+                step: 0.1,
+                tooltips: {
+                    to: (value) => Math.round(Helpers.convertSpeed(value)),
+                },
+                connect: 'lower',
+                range: {
+                'min': [1],
+                'max': [50]
+                },
+            });
+        }
+        this.#otherDroneSpeedSlider.noUiSlider.on('change', this.#onOtherDroneSpeedSliderChange.bind(this));
+    }
+
+    /**
+    * onOtherDroneSpeedSliderChange method:
+    *   Upon slider move, updates other drone speed and recomputes 1st-party risk.
+    */
+    #onOtherDroneSpeedSliderChange(values, handle) {
+        this.#otherDroneSpeed = values[handle];
         this.#computeRisksDebounced(this.#edgesList);
     }
 
