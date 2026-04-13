@@ -789,11 +789,12 @@ class Visualization {
                             let prob = this.#population.features[0].properties.p;
                             edge.computeNMAC_rate(T_sum, v_GA_mean, prob);
 
-                            // Compute 1st-party risk (drone-to-drone), normalized by total Dn sum
+                            // Compute 1st-party risk (drone-to-drone), normalized by total Dn sum.
+                            // partialProb = 1: drones fly at the same altitude, so p_below and lambda_smt don't apply.
                             let Dn_sum = (edgesSubsetDroneDensities.map((lst) => {return lst[j]})).reduce((a, c) => a + c, 0);
                             let Dn_normalized = this.#totalDnSum > 0 ? Dn_sum / this.#totalDnSum : 0;
                             edge.firstPartyDn = Dn_normalized;
-                            edge.computeFirstPartyNMAC_rate(Dn_normalized * this.#droneTrafficDensity, this.#v_UA, prob, this.#otherDroneSpeed);
+                            edge.computeFirstPartyNMAC_rate(Dn_normalized * this.#droneTrafficDensity, this.#v_UA, 1, this.#otherDroneSpeed);
                         }
 
                         let totalAverageGASpeeds = this.#edgesList.reduce(function (flattenedArray, element) {
@@ -815,7 +816,7 @@ class Visualization {
                         let totalDn = this.#edgesList.reduce((a, c) => a + (c.firstPartyDn || 0), 0);
                         let totalFirstParty_p_HC = (2 * this.#NMAC_radius**2 * totalDn * this.#droneTrafficDensity * Math.sqrt(this.#v_UA**2 + this.#otherDroneSpeed**2)) /
                                                    (this.#NMAC_radius * airG);
-                        let firstPartyRate = totalFirstParty_p_HC * this.#population.features[0].properties.p;
+                        let firstPartyRate = totalFirstParty_p_HC;  // partialProb = 1 for 1st-party
                         this.#totalExpectedFirstPartyNMAC = (totalLength / this.#v_UA) * firstPartyRate;
                         this.#totalFirstPartyNMAC_rate = Math.ceil(firstPartyRate * 3600 * 1e6)
 
