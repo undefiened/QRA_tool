@@ -421,17 +421,28 @@ class Visualization {
             this.#edgesGeoJsonLayersList.remove();
 
             // Check which base layer was selected and add corresponding layers
+            let tabIdToActivate = null;
             if (e.name === Layers.Ground) {
                 groundGeoJSONLayer.addTo(this.#map);
                 this.#groundBuffersUnionGeoJsonLayers.addTo(this.#map);
+                tabIdToActivate = '#ground-risk-tab';
             } else if (e.name === Layers.Air) {
                 airGeoJSONLayer.addTo(this.#map);
                 this.#airBuffersUnionGeoJsonLayers.addTo(this.#map);
+                tabIdToActivate = '#air-risk-tab';
             } else if (e.name === Layers.FirstParty && this.#hasFirstPartyData) {
                 firstPartyGeoJSONLayer.addTo(this.#map);
                 this.#groundBuffersUnionGeoJsonLayers.addTo(this.#map);
+                tabIdToActivate = '#first-party-risk-tab';
             }
             this.#edgesGeoJsonLayersList.addTo(this.#map);
+
+            if (tabIdToActivate) {
+                let tabTriggerEl = document.querySelector(tabIdToActivate);
+                if (tabTriggerEl) {
+                    bootstrap.Tab.getOrCreateInstance(tabTriggerEl).show();
+                }
+            }
         }.bind(this));
 
         this.#map.on('dblclick', this.#onMapDoubleClick.bind(this));
