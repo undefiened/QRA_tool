@@ -165,7 +165,7 @@ class Visualization {
         this.#totalFirstPartyRatePerSecond = 0;
         this.#totalDnSum = 0;
         this.#peopleInVehicle = 1;
-        this.#mitigationFactor = 0.9;
+        this.#mitigationFactor = 0.95;
 
         this.#populationElement = document.getElementById("population");
         this.#lengthElement = document.getElementById("length");
@@ -1335,8 +1335,8 @@ class Visualization {
 
     /**
     * initializeMitigationFactorSlider method:
-    *   Creates a slider for the conflict mitigation factor. A value of 0.9
-    *   means 90% of conflicts are mitigated and only 10% result in a fatality.
+    *   Creates a slider for the conflict mitigation factor. A value of 0.95
+    *   means 95% of conflicts are mitigated and only 5% result in a fatality.
     */
     #initializeMitigationFactorSlider() {
         this.#mitigationFactorSlider = document.getElementById('mitigation-factor-slider');
@@ -1344,18 +1344,49 @@ class Visualization {
         if (!this.#mitigationFactorSlider.noUiSlider) {
             noUiSlider.create(this.#mitigationFactorSlider, {
                 start: [this.#mitigationFactor],
-                step: 0.01,
+                step: 0.001,
                 tooltips: {
-                    to: (value) => Number(value).toFixed(2),
+                    to: (value) => Number(value).toFixed(3),
                 },
                 connect: 'lower',
                 range: {
-                    'min': [0],
+                    'min': [0.8],
                     'max': [1]
                 },
             });
         }
         this.#mitigationFactorSlider.noUiSlider.on('change', this.#onMitigationFactorSliderChange.bind(this));
+
+        const tooltip = this.#mitigationFactorSlider.querySelector('.noUi-tooltip');
+        tooltip.setAttribute('contenteditable', 'true');
+        tooltip.setAttribute('spellcheck', 'false');
+        tooltip.style.cursor = 'text';
+        tooltip.title = 'Click to edit';
+
+        // Prevent the handle from grabbing pointer events while editing the tooltip.
+        const stop = (e) => e.stopPropagation();
+        ['mousedown', 'touchstart', 'pointerdown'].forEach((ev) => tooltip.addEventListener(ev, stop));
+
+        const applyTooltip = () => {
+            let v = Number(tooltip.textContent);
+            if (Number.isNaN(v)) {
+                tooltip.textContent = Number(this.#mitigationFactor).toFixed(3);
+                return;
+            }
+            if (v < 0.8) v = 0.8;
+            if (v > 1) v = 1;
+            this.#mitigationFactor = v;
+            this.#mitigationFactorSlider.noUiSlider.set(v);
+            this.#computeTotalStatistics();
+            this.#edgesList.map((edge) => {this.#addSegmentRow(edge)});
+        };
+        tooltip.addEventListener('blur', applyTooltip);
+        tooltip.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                tooltip.blur();
+            }
+        });
     }
 
     #onMitigationFactorSliderChange(values, handle) {
