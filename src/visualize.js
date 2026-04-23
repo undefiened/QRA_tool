@@ -114,9 +114,14 @@ class Visualization {
     #mtbfInput;
     #totalFirstPartyNMAC_rate;
     #totalExpectedFirstPartyNMAC;
+    #totalFirstPartyRatePerSecond;
     #totalDnSum;
     #fatalityProbability;
     #mtbfFlightHours;
+    #peopleInVehicleSlider;
+    #peopleInVehicle;
+    #mitigationFactorSlider;
+    #mitigationFactor;
 
     #population;
     #timeoutId;
@@ -157,7 +162,10 @@ class Visualization {
         this.#mtbfFlightHours = 1000;
         this.#totalFirstPartyNMAC_rate = 0;
         this.#totalExpectedFirstPartyNMAC = 0;
+        this.#totalFirstPartyRatePerSecond = 0;
         this.#totalDnSum = 0;
+        this.#peopleInVehicle = 1;
+        this.#mitigationFactor = 0.9;
 
         this.#populationElement = document.getElementById("population");
         this.#lengthElement = document.getElementById("length");
@@ -197,6 +205,8 @@ class Visualization {
         this.#initializeMTBFInput();
         this.#initializeDroneDensitySlider();
         this.#initializeOtherDroneSpeedSlider();
+        this.#initializePeopleInVehicleSlider();
+        this.#initializeMitigationFactorSlider();
         this.#initializeDroneDimensionSlider();
         this.#initializeSegmentExtensionCheckbox();
         this.#initializeSegmentsTableToggle();
@@ -818,6 +828,7 @@ class Visualization {
                                                    (this.#NMAC_radius * airG);
                         let firstPartyRate = totalFirstParty_p_HC;  // partialProb = 1 for 1st-party
                         this.#totalExpectedFirstPartyNMAC = (totalLength / this.#v_UA) * firstPartyRate;
+                        this.#totalFirstPartyRatePerSecond = firstPartyRate;
                         this.#totalFirstPartyNMAC_rate = Math.ceil(firstPartyRate * 3600 * 1e6)
 
                         this.#ongoingComputation--;
@@ -894,19 +905,24 @@ class Visualization {
         let maxExposedDensity = this.#edgesList.reduce((a, edge) => Math.max(a, edge.maxSquarePopulationDensity), 0);
         let expectedNMAC = totalArea ? (this.#totalExpectedNMAC).toExponential(2) : 0;
         let expectedFirstPartyNMAC = totalArea ? (this.#totalExpectedFirstPartyNMAC).toExponential(2) : 0;
+        let firstPartyFatalityRateValue = this.#totalFirstPartyRatePerSecond * 3600 *
+                                          this.#peopleInVehicle * (1 - this.#mitigationFactor);
+        let firstPartyFatalityRate = totalArea ? firstPartyFatalityRateValue.toExponential(2) : 0;
         let totalTime = this.#totalMissionDuration;
 
         let cells = this.#totalsTableElement.querySelector('tbody').querySelector('tr').querySelectorAll('td');
 
         let data = [Math.ceil(totalLength), Math.ceil(totalTime/60), Math.ceil(totalPopulationAtRisk),
                     Math.ceil(totalArea), efr, exposedDensity, maxExposedDensity, this.#totalNMAC_rate,
-                    expectedNMAC, this.#totalFirstPartyNMAC_rate, expectedFirstPartyNMAC];
+                    expectedNMAC, this.#totalFirstPartyNMAC_rate, expectedFirstPartyNMAC,
+                    firstPartyFatalityRate];
 
         if (this.#ongoingComputation < 1) {
             for (let i = 0; i < cells.length; i++) {
                  cells[i].textContent = data[i];
             }
             this.#applyEFRStyle(cells[4], efrValue);
+            this.#applyEFRStyle(cells[11], firstPartyFatalityRateValue);
             this.#hideSpinner();
         }
     }
@@ -928,7 +944,11 @@ class Visualization {
                               (edge.population/edge.groundArea).toExponential(2),
                               (edge.maxSquarePopulationDensity).toExponential(2)];
         let airRiskData = [Math.ceil(edge.NMAC_rate), (edge.expectedNMAC).toExponential(2)];
-        let firstPartyRiskData = [Math.ceil(edge.firstPartyNMAC_rate || 0), (edge.expectedFirstPartyNMAC || 0).toExponential(2)];
+        let segmentFirstPartyFatalityRate = (edge.firstPartyNMAC_rate || 0) / 1e6 *
+                                            this.#peopleInVehicle * (1 - this.#mitigationFactor);
+        let firstPartyRiskData = [Math.ceil(edge.firstPartyNMAC_rate || 0),
+                                  (edge.expectedFirstPartyNMAC || 0).toExponential(2),
+                                  segmentFirstPartyFatalityRate.toExponential(2)];
 
         let data = generalData.concat(groundRiskData, airRiskData, firstPartyRiskData);
 
@@ -942,6 +962,7 @@ class Visualization {
             }
             cells[0].style.background = edge.polylineColor;
             this.#applyEFRStyle(cells[7], segmentEFRValue);
+            this.#applyEFRStyle(cells[14], segmentFirstPartyFatalityRate);
         } else {
             let newRow = document.createElement('tr');
 
@@ -957,6 +978,7 @@ class Visualization {
 
             let cells = newRow.querySelectorAll('td');
             this.#applyEFRStyle(cells[7], segmentEFRValue);
+            this.#applyEFRStyle(cells[14], segmentFirstPartyFatalityRate);
 
             tableBody.appendChild(newRow);
 
@@ -1278,6 +1300,68 @@ class Visualization {
     #onOtherDroneSpeedSliderChange(values, handle) {
         this.#otherDroneSpeed = values[handle];
         this.#computeRisksDebounced(this.#edgesList);
+    }
+
+    /**
+    * initializePeopleInVehicleSlider method:
+    *   Creates a slider for the number of people aboard the own vehicle,
+    *   used to compute the 1st-party expected fatality rate.
+    */
+    #initializePeopleInVehicleSlider() {
+        this.#peopleInVehicleSlider = document.getElementById('people-in-vehicle-slider');
+
+        if (!this.#peopleInVehicleSlider.noUiSlider) {
+            noUiSlider.create(this.#peopleInVehicleSlider, {
+                start: [this.#peopleInVehicle],
+                step: 1,
+                tooltips: {
+                    to: (value) => Math.round(value),
+                },
+                connect: 'lower',
+                range: {
+                    'min': [0],
+                    'max': [10]
+                },
+            });
+        }
+        this.#peopleInVehicleSlider.noUiSlider.on('change', this.#onPeopleInVehicleSliderChange.bind(this));
+    }
+
+    #onPeopleInVehicleSliderChange(values, handle) {
+        this.#peopleInVehicle = Math.floor(values[handle]);
+        this.#computeTotalStatistics();
+        this.#edgesList.map((edge) => {this.#addSegmentRow(edge)});
+    }
+
+    /**
+    * initializeMitigationFactorSlider method:
+    *   Creates a slider for the conflict mitigation factor. A value of 0.9
+    *   means 90% of conflicts are mitigated and only 10% result in a fatality.
+    */
+    #initializeMitigationFactorSlider() {
+        this.#mitigationFactorSlider = document.getElementById('mitigation-factor-slider');
+
+        if (!this.#mitigationFactorSlider.noUiSlider) {
+            noUiSlider.create(this.#mitigationFactorSlider, {
+                start: [this.#mitigationFactor],
+                step: 0.01,
+                tooltips: {
+                    to: (value) => Number(value).toFixed(2),
+                },
+                connect: 'lower',
+                range: {
+                    'min': [0],
+                    'max': [1]
+                },
+            });
+        }
+        this.#mitigationFactorSlider.noUiSlider.on('change', this.#onMitigationFactorSliderChange.bind(this));
+    }
+
+    #onMitigationFactorSliderChange(values, handle) {
+        this.#mitigationFactor = Number(values[handle]);
+        this.#computeTotalStatistics();
+        this.#edgesList.map((edge) => {this.#addSegmentRow(edge)});
     }
 
     #initializeDroneDimensionSlider() {

@@ -76,7 +76,7 @@
                   </th>
                   <th colspan="5" scope="col" class="table-warning">Ground Risk</th>
                   <th colspan="2" scope="col" class="table-primary">Air Risk</th>
-                  <th colspan="2" scope="col" class="table-success">1st-Party Risk <span id="first-party-label-totals" style="color: red; font-weight: bold;">(experimental)</span></th>
+                  <th colspan="3" scope="col" class="table-success">1st-Party Risk <span id="first-party-label-totals" style="color: red; font-weight: bold;">(experimental)</span></th>
                 </tr>
                 <tr class="">
                   <th scope="col" class="table-light">Length (m)</th>
@@ -96,6 +96,9 @@
                   <th scope="col" class="table-success">NMAC of the mission
                     <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip"
                         title="The expected number of drone-to-drone Near Mid-Air Collisions during the entire mission."></i></sup></th>
+                  <th scope="col" class="table-success">EFR (/flight hour)
+                    <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip"
+                        title="Expected first-party fatality rate per flight hour. Computed as NMAC/hour × people in own vehicle × (1 − mitigation factor)."></i></sup></th>
                 </tr>
               </thead>
               <tbody>
@@ -109,6 +112,7 @@
                     <td class="table-warning">0</td>
                     <td class="table-primary">0</td>
                     <td class="table-primary">0</td>
+                    <td class="table-success">0</td>
                     <td class="table-success">0</td>
                     <td class="table-success">0</td>
                 </tr>
@@ -194,6 +198,16 @@
                                 <div id="other-drone-speed-slider"></div>
                             </div>
                         </div>
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <label class="form-label">People in own vehicle <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Number of people aboard the own vehicle. Used to compute 1st-party expected fatality rate."></i></sup></label>
+                                <div id="people-in-vehicle-slider"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Conflict mitigation factor <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Fraction of near mid-air conflicts that are mitigated (avoided). Default 0.9 means 90% of conflicts are mitigated and only 10% result in a fatality."></i></sup></label>
+                                <div id="mitigation-factor-slider"></div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- SORA v2.5 Settings Tab -->
@@ -249,7 +263,7 @@
                         <th colspan="4" scope="col" class="table-light"></th>
                         <th colspan="5" scope="col" class="table-warning">Ground Risk</th>
                         <th colspan="2" scope="col" class="table-primary">Air Risk</th>
-                        <th colspan="2" scope="col" class="table-success">1st-Party Risk <span id="first-party-label-segments" style="color: red; font-weight: bold;">(experimental)</span></th>
+                        <th colspan="3" scope="col" class="table-success">1st-Party Risk <span id="first-party-label-segments" style="color: red; font-weight: bold;">(experimental)</span></th>
                     </tr>
                     <tr>
                       <th scope="col" class="segment-color-col"></th>
@@ -270,6 +284,7 @@
 
                       <th scope="col" class="table-success">NMAC/1 million flight hours</th>
                       <th scope="col" class="table-success">NMAC of the mission</th>
+                      <th scope="col" class="table-success">EFR (/flight hour)</th>
                     </tr>
                 </thead>
                 <tbody class="table-group-divider">
