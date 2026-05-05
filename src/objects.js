@@ -61,8 +61,12 @@ class Node {
         this.#hasNextCicle = false;
         this.#nextCicle = null;
         this.#isSmooth = true;
-        this.#marker = L.marker(latlng, {draggable: true, autoPan: true});
         this.#positionInList = positionInList;
+        this.#marker = L.marker(latlng, {
+            draggable: true,
+            autoPan: true,
+            icon: Node.#buildNumberedIcon(this.#positionInList + 1),
+        });
         this.#edgesList = [];
         this.#circleCoveredPopulation = 0;
         this.#marker.on('moveend', this.#markerMovedEvent.bind(this));
@@ -76,6 +80,16 @@ class Node {
     }
 
     /* ---------- Methods - private ---------- */
+
+    static #buildNumberedIcon(number) {
+        return L.divIcon({
+            className: 'numbered-marker',
+            html: `<div class="numbered-marker-pin">${number}</div>`,
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+            popupAnchor: [0, -16],
+        });
+    }
 
     /**
     * updateCircle method:
@@ -317,6 +331,17 @@ class Node {
 
     set positionInList(positionInList) {
         this.#positionInList = positionInList;
+        if (this.#marker) {
+            let element = this.#marker.getElement();
+            if (element) {
+                let pin = element.querySelector('.numbered-marker-pin');
+                if (pin) {
+                    pin.textContent = `${positionInList + 1}`;
+                }
+            } else {
+                this.#marker.setIcon(Node.#buildNumberedIcon(positionInList + 1));
+            }
+        }
     }
 
     set circleCoveredPopulation(population) {

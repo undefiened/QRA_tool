@@ -66,6 +66,36 @@ html, body {
     border: 1px solid black;
 }
 
+.endpoint-column {
+    text-align: center;
+    font-weight: 600;
+    font-family: monospace;
+    vertical-align: middle !important;
+    color: #444;
+    white-space: nowrap;
+}
+
+.numbered-marker {
+    background: transparent;
+    border: none;
+}
+
+.numbered-marker-pin {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #0d6efd;
+    color: #fff;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 13px;
+    line-height: 1;
+}
+
 
 #totals-table td {
 border-bottom-width: 0;

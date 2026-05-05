@@ -132,6 +132,7 @@ class Visualization {
     #selectedArea;
     #dataUrl;
     #hasFirstPartyData;
+    #activeLayer;
 
     constructor(selected_area) {
         this.#selectedArea = selected_area;
@@ -188,6 +189,7 @@ class Visualization {
         this.#useRTree = true;
         this.#rtreeData = null;
         this.#hasFirstPartyData = false;
+        this.#activeLayer = Layers.Ground;
 
         // setting current year at footer
         document.getElementById("currentYear").textContent = new Date().getFullYear();;
@@ -436,6 +438,11 @@ class Visualization {
                 tabIdToActivate = '#first-party-risk-tab';
             }
             this.#edgesGeoJsonLayersList.addTo(this.#map);
+
+            this.#activeLayer = e.name;
+            if (this.#segmentsTableVisible) {
+                this.#refreshSegmentColors();
+            }
 
             if (tabIdToActivate) {
                 let tabTriggerEl = document.querySelector(tabIdToActivate);
@@ -845,6 +852,9 @@ class Visualization {
                         this.#ongoingComputation--;
                         this.#computeTotalStatistics()
                         edges.map((edge) => {this.#addSegmentRow(edge)});
+                        if (this.#segmentsTableVisible) {
+                            this.#refreshSegmentColors();
+                        }
 
                         workers.forEach(function(worker) {
                             worker.terminate();
@@ -947,6 +957,8 @@ class Visualization {
         let tableBody = this.#segmentsTableElement.querySelector('tbody')
         let rows = tableBody.querySelectorAll('tr');
 
+        let endpointLabel = `${edge.nodesList[0].positionInList + 1}-${edge.nodesList[1].positionInList + 1}`;
+
         let generalData = [edge.positionInList+1, edge.altitude, Math.ceil(edge.length),
                            Math.ceil((edge.length/this.#v_UA)/60)];
         let segmentEFRValue = this.#computeSegmentEFR(edge);
@@ -971,16 +983,19 @@ class Visualization {
             for (let i = 0; i < data.length; i++) {
                 cells[i+1].textContent = data[i];
             }
-            cells[0].style.background = edge.polylineColor;
+            cells[0].textContent = endpointLabel;
+            cells[0].style.background = '';
+            cells[0].classList.remove('color-column');
+            cells[0].classList.add('endpoint-column');
             this.#applyEFRStyle(cells[7], segmentEFRValue);
             this.#applyEFRStyle(cells[14], segmentFirstPartyFatalityRate);
         } else {
             let newRow = document.createElement('tr');
 
-            let colorColumn = document.createElement('td');
-            colorColumn.classList.add('color-column');
-            colorColumn.style.background = edge.polylineColor;
-            newRow.appendChild(colorColumn);
+            let endpointColumn = document.createElement('td');
+            endpointColumn.classList.add('endpoint-column');
+            endpointColumn.textContent = endpointLabel;
+            newRow.appendChild(endpointColumn);
 
             this.#addDataBlockToRow(newRow, generalData, 'table-light');
             this.#addDataBlockToRow(newRow, groundRiskData, 'table-warning');
@@ -1384,10 +1399,11 @@ class Visualization {
                 tooltip.textContent = Number(this.#mitigationFactor).toFixed(3);
                 return;
             }
-            if (v < 0.8) v = 0.8;
+            if (v < 0) v = 0;
             if (v > 1) v = 1;
             this.#mitigationFactor = v;
             this.#mitigationFactorSlider.noUiSlider.set(v);
+            tooltip.textContent = Number(v).toFixed(3);
             this.#computeTotalStatistics();
             this.#edgesList.map((edge) => {this.#addSegmentRow(edge)});
         };
@@ -1479,9 +1495,9 @@ class Visualization {
     }
 
     #applyMultiColorSegments() {
-        for (let i = 0; i < this.#edgesList.length; i++) {
-            this.#edgesList[i].polylineColor = colorNameList.pop().hex;
-            this.#addSegmentRow(this.#edgesList[i]);
+        this.#refreshSegmentColors();
+        for (let edge of this.#edgesList) {
+            this.#addSegmentRow(edge);
         }
     }
 
@@ -1489,6 +1505,50 @@ class Visualization {
         for (let edge of this.#edgesList) {
             edge.polylineColor = '#0d6efd';
             this.#addSegmentRow(edge);
+        }
+    }
+
+    static #RISK_RANGES = {
+        ground: [0, 5000],
+        air: [0, 200],
+        firstParty: [5000, 50000],
+    };
+
+    #getEdgeRiskValue(edge) {
+        if (this.#activeLayer === Layers.Air) {
+            return edge.NMAC_rate || 0;
+        } else if (this.#activeLayer === Layers.FirstParty) {
+            return edge.firstPartyNMAC_rate || 0;
+        }
+        return edge.population || 0;
+    }
+
+    #getRiskRange() {
+        if (this.#activeLayer === Layers.Air) {
+            return Visualization.#RISK_RANGES.air;
+        } else if (this.#activeLayer === Layers.FirstParty) {
+            return Visualization.#RISK_RANGES.firstParty;
+        }
+        return Visualization.#RISK_RANGES.ground;
+    }
+
+    #valueToRiskColor(value, min, max) {
+        if (!isFinite(min) || !isFinite(max) || max === min) {
+            return '#0d6efd';
+        }
+        let t = (value - min) / (max - min);
+        t = Math.max(0, Math.min(1, t));
+        let h = Math.round((1 - t) * 120);
+        return `hsl(${h}, 75%, 45%)`;
+    }
+
+    #refreshSegmentColors() {
+        if (this.#edgesList.length === 0) {
+            return;
+        }
+        let [min, max] = this.#getRiskRange();
+        for (let edge of this.#edgesList) {
+            edge.polylineColor = this.#valueToRiskColor(this.#getEdgeRiskValue(edge), min, max);
         }
     }
 
