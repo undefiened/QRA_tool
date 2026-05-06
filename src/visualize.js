@@ -1648,17 +1648,17 @@ class Visualization {
 
         this.#clearAllWaypoints();
 
-        for (const [id, slider, handler] of this.#sliderRegistry()) {
-            if (Object.prototype.hasOwnProperty.call(sliders, id)) {
-                this.#applySliderValue(slider, sliders[id], handler);
-            }
-        }
-
         for (const w of wps) {
             const lat = w && Number(w.lat);
             const lng = w && Number(w.lng);
             if (Number.isFinite(lat) && Number.isFinite(lng)) {
                 this.#onMapDoubleClick({ latlng: L.latLng(lat, lng) });
+            }
+        }
+
+        for (const [id, slider, handler] of this.#sliderRegistry()) {
+            if (Object.prototype.hasOwnProperty.call(sliders, id)) {
+                this.#applySliderValue(slider, sliders[id], handler);
             }
         }
 
