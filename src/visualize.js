@@ -52,7 +52,7 @@ let workersUrl = './src/workers.js';
 const Layers = {
     Ground: "Ground risk",
     Air: "Air risk",
-    FirstParty: "1st-party risk <span style=\"color: red; font-weight: bold;\">(experimental)</span>"
+    FirstParty: "1st-party risk"
 }
 
 /**
@@ -338,14 +338,13 @@ class Visualization {
             firstPartyTab.style.cursor = 'pointer';
         }
 
-        // Restore labels to show "(experimental)"
         const totalsLabel = document.getElementById('first-party-label-totals');
         const segmentsLabel = document.getElementById('first-party-label-segments');
         if (totalsLabel) {
-            totalsLabel.textContent = '(experimental)';
+            totalsLabel.textContent = '';
         }
         if (segmentsLabel) {
-            segmentsLabel.textContent = '(experimental)';
+            segmentsLabel.textContent = '';
         }
 
         // Restore 1st-party risk columns in totals table
