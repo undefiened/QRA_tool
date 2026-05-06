@@ -317,6 +317,24 @@
         </div>
     </section>
 
+    <!--Save / Load mission section-->
+    <section class="mb-1 pt-2 pb-2 ps-5 pe-5">
+        <h2 class="pb-2">Save / Load mission</h2>
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+            <button id="export-mission-btn" type="button" class="btn btn-outline-primary">Export mission to JSON</button>
+            <button id="import-mission-btn" type="button" class="btn btn-outline-primary">Import mission from JSON</button>
+            <input type="file" id="import-mission-input" accept="application/json,.json" style="display: none;">
+        </div>
+        <p class="text-muted small mb-0">
+            <strong>Disclaimer:</strong> the exported JSON format is unstable and backward
+            compatibility is not guaranteed. Files saved with one version of the tool may
+            fail to load (or load incorrectly) in future versions as parameters, slider
+            ranges, and computations evolve. Importing replaces the current mission and
+            slider values; the segment-extension toggle and per-waypoint altitude/smoothness
+            are not stored.
+        </p>
+    </section>
+
     <!--Footer section-->
     <footer class="p-5 text-center text-lg-start bg-dark text-muted">
         <div class="row">

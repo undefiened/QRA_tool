@@ -212,6 +212,7 @@ class Visualization {
         this.#initializeDroneDimensionSlider();
         this.#initializeSegmentExtensionCheckbox();
         this.#initializeSegmentsTableToggle();
+        this.#initializeImportExport();
         this.#computeTotalStatistics();
     }
 
@@ -1573,6 +1574,141 @@ class Visualization {
         this.#updateBuffersUnion("ground");
         this.#updateBuffersUnion("air");
         this.#computeRisksDebounced(this.#edgesList);
+    }
+
+    #sliderRegistry() {
+        return [
+            ['global-altitude-slider', this.#globalAltitudeSlider, this.#onGlobalAltitudeSliderChange],
+            ['nmac-slider', this.#NMAC_Slider, this.#onNMAC_sliderChange],
+            ['nmac-slider-fp', this.#NMAC_SliderFP, this.#onNMAC_sliderChange],
+            ['uav-speed-slider', this.#speedSlider, this.#onUavSpeedSliderChange],
+            ['extension-slider', this.#extensionSlider, this.#onEdgeExtensionSliderChange],
+            ['fatality-probability-slider', this.#fatalityProbabilitySlider, this.#onFatalityProbabilitySliderChange],
+            ['drone-dimension-slider', this.#droneDimensionSlider, this.#onDroneDimensionSliderChange],
+            ['drone-density-slider', this.#droneDensitySlider, this.#onDroneDensitySliderChange],
+            ['other-drone-speed-slider', this.#otherDroneSpeedSlider, this.#onOtherDroneSpeedSliderChange],
+            ['people-in-vehicle-slider', this.#peopleInVehicleSlider, this.#onPeopleInVehicleSliderChange],
+            ['mitigation-factor-slider', this.#mitigationFactorSlider, this.#onMitigationFactorSliderChange],
+        ];
+    }
+
+    #serializeMission() {
+        const waypoints = this.#nodesList.map((node) => {
+            const ll = node.marker.getLatLng();
+            return { lat: ll.lat, lng: ll.lng };
+        });
+        const sliders = {};
+        for (const [id, el] of this.#sliderRegistry()) {
+            if (el && el.noUiSlider) {
+                const v = el.noUiSlider.get();
+                sliders[id] = Array.isArray(v) ? v.map(Number) : Number(v);
+            }
+        }
+        return { waypoints, sliders };
+    }
+
+    #clearAllWaypoints() {
+        for (const node of this.#nodesList) {
+            this.#nodesGeoJsonLayersList.removeLayer(node.marker);
+        }
+        for (const edge of this.#edgesList) {
+            this.#edgesGeoJsonLayersList.removeLayer(edge.polyline);
+        }
+        this.#nodesList = [];
+        this.#edgesList = [];
+
+        if (this.#groundBuffersUnionGeoJSON) {
+            this.#groundBuffersUnionGeoJsonLayers.removeLayer(this.#groundBuffersUnionGeoJSON);
+            this.#groundBuffersUnionGeoJSON = null;
+            this.#groundBuffersUnion = null;
+        }
+        if (this.#airBuffersUnionGeoJSON) {
+            this.#airBuffersUnionGeoJsonLayers.removeLayer(this.#airBuffersUnionGeoJSON);
+            this.#airBuffersUnionGeoJSON = null;
+            this.#airBuffersUnion = null;
+        }
+
+        const tbody = this.#segmentsTableElement && this.#segmentsTableElement.querySelector('tbody');
+        if (tbody) tbody.innerHTML = '';
+
+        this.#computeTotalStatistics();
+    }
+
+    #applySliderValue(slider, value, handler) {
+        if (!slider || !slider.noUiSlider) return;
+        const target = Array.isArray(value) ? Number(value[0]) : Number(value);
+        if (!Number.isFinite(target)) return;
+        slider.noUiSlider.set(target);
+        if (handler) handler.call(this, [target], 0);
+    }
+
+    #importMission(data) {
+        const wps = (data && data.waypoints) || (Array.isArray(data) ? data : []);
+        const sliders = (data && data.sliders) || {};
+
+        this.#clearAllWaypoints();
+
+        for (const [id, slider, handler] of this.#sliderRegistry()) {
+            if (Object.prototype.hasOwnProperty.call(sliders, id)) {
+                this.#applySliderValue(slider, sliders[id], handler);
+            }
+        }
+
+        for (const w of wps) {
+            const lat = w && Number(w.lat);
+            const lng = w && Number(w.lng);
+            if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                this.#onMapDoubleClick({ latlng: L.latLng(lat, lng) });
+            }
+        }
+
+        if (wps.length > 0) {
+            const valid = wps
+                .filter((w) => Number.isFinite(Number(w.lat)) && Number.isFinite(Number(w.lng)))
+                .map((w) => [Number(w.lat), Number(w.lng)]);
+            if (valid.length > 0) {
+                this.#map.fitBounds(L.latLngBounds(valid).pad(0.2));
+            }
+        }
+    }
+
+    #exportMissionToFile() {
+        const data = this.#serializeMission();
+        const json = JSON.stringify(data, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        a.download = `uav-mission-${ts}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    #initializeImportExport() {
+        const exportBtn = document.getElementById('export-mission-btn');
+        const importBtn = document.getElementById('import-mission-btn');
+        const fileInput = document.getElementById('import-mission-input');
+        if (!exportBtn || !importBtn || !fileInput) return;
+
+        exportBtn.addEventListener('click', () => this.#exportMissionToFile());
+        importBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', async (event) => {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+            try {
+                const text = await file.text();
+                const data = JSON.parse(text);
+                this.#importMission(data);
+            } catch (err) {
+                console.error('Failed to import mission:', err);
+                alert('Failed to import mission: ' + err.message);
+            } finally {
+                fileInput.value = '';
+            }
+        });
     }
 }
 
