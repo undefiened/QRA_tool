@@ -255,6 +255,35 @@ class Node {
         this.#updateCircle();
     }
 
+    setAltitude(altitude, markOutgoingEdgeManual = false) {
+        const value = Math.max(10, Math.min(1200, Math.floor(Number(altitude))));
+        if (!Number.isFinite(value)) {
+            return;
+        }
+
+        this.#altitude = value;
+        this.#sliderElement.noUiSlider.set(value);
+        this.#updateCircle();
+
+        if (this.#hasEdge) {
+            this.#edge.altitude = this.#altitude;
+            this.#edge.altitudeManuallyChanged = Boolean(markOutgoingEdgeManual);
+            this.#edge.update();
+        }
+
+        if (this.#edgesList.length > 0 && this.#edgesList[0].nodesList[0].isSmooth) {
+            this.#edgesList[0].update();
+        }
+    }
+
+    setSmooth(isSmooth) {
+        this.#isSmooth = Boolean(isSmooth);
+        this.#smoothCheckboxElement.checked = this.#isSmooth;
+        if (this.#hasEdge) {
+            this.#edge.update();
+        }
+    }
+
     /* ---------- Getters ---------- */
 
     get altitude() {

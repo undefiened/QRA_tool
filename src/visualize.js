@@ -47,6 +47,10 @@ let dataZoomLevels = {
 }
 
 let workersUrl = './src/workers.js';
+const KML_NAMESPACE = 'http://www.opengis.net/kml/2.2';
+const KML_DATA_PREFIX = 'uav-risk:';
+const KML_SLIDER_PREFIX = `${KML_DATA_PREFIX}slider:`;
+const KML_SETTING_PREFIX = `${KML_DATA_PREFIX}setting:`;
 
 // Names of the map layers
 const Layers = {
@@ -1466,13 +1470,15 @@ class Visualization {
         affectedEdges.map((edge) => edge.update())
 
         let lastSegment = this.#edgesList[this.#edgesList.length-1];
-        if (!lastSegment.altitudeManuallyChanged) {
+        if (lastSegment && !lastSegment.altitudeManuallyChanged) {
             lastSegment.nodesList[1].altitudeUpdatedGlobally(newAltitude);
             lastSegment.update()
         }
 
-        this.#updateBuffersUnion("ground");
-        this.#computeRisksDebounced(affectedEdges);
+        if (this.#edgesList.length > 0) {
+            this.#updateBuffersUnion("ground");
+            this.#computeRisksDebounced(affectedEdges);
+        }
     }
 
     #initializeSegmentExtensionCheckbox() {
@@ -1594,7 +1600,13 @@ class Visualization {
     #serializeMission() {
         const waypoints = this.#nodesList.map((node) => {
             const ll = node.marker.getLatLng();
-            return { lat: ll.lat, lng: ll.lng };
+            return {
+                lat: ll.lat,
+                lng: ll.lng,
+                altitude: node.altitude,
+                smooth: node.isSmooth,
+                altitudeManuallyChanged: Boolean(node.edge && node.edge.altitudeManuallyChanged),
+            };
         });
         const sliders = {};
         for (const [id, el] of this.#sliderRegistry()) {
@@ -1603,7 +1615,290 @@ class Visualization {
                 sliders[id] = Array.isArray(v) ? v.map(Number) : Number(v);
             }
         }
-        return { waypoints, sliders };
+        const settings = {
+            selectedArea: this.#selectedArea,
+            segmentExtensionEnabled: Boolean(this.#segmentsExtensionCheckbox && this.#segmentsExtensionCheckbox.checked),
+        };
+        return { waypoints, sliders, settings };
+    }
+
+    static #escapeXml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;');
+    }
+
+    static #formatKmlValue(value) {
+        if (Array.isArray(value)) {
+            return value.join(',');
+        }
+        if (typeof value === 'boolean') {
+            return value ? 'true' : 'false';
+        }
+        return String(value ?? '');
+    }
+
+    static #formatCoordinateValue(value, fallback = 0) {
+        const number = Number(value);
+        return Number.isFinite(number) ? String(number) : String(fallback);
+    }
+
+    static #dataToKml(name, value, indent = '        ') {
+        const dataName = Visualization.#escapeXml(name);
+        const dataValue = Visualization.#escapeXml(Visualization.#formatKmlValue(value));
+        return `${indent}<Data name="${dataName}"><value>${dataValue}</value></Data>`;
+    }
+
+    static #waypointCoordinate(waypoint) {
+        const lng = Visualization.#formatCoordinateValue(waypoint.lng);
+        const lat = Visualization.#formatCoordinateValue(waypoint.lat);
+        const altitude = Visualization.#formatCoordinateValue(waypoint.altitude);
+        return `${lng},${lat},${altitude}`;
+    }
+
+    #missionToKml(data) {
+        const documentData = [
+            Visualization.#dataToKml(`${KML_DATA_PREFIX}format`, 'mission'),
+            Visualization.#dataToKml(`${KML_DATA_PREFIX}version`, '1'),
+            Visualization.#dataToKml(`${KML_DATA_PREFIX}selected-area`, data.settings.selectedArea),
+            Visualization.#dataToKml(`${KML_SETTING_PREFIX}segment-extension-enabled`, data.settings.segmentExtensionEnabled),
+            ...Object.entries(data.sliders || {}).map(([id, value]) => {
+                return Visualization.#dataToKml(`${KML_SLIDER_PREFIX}${id}`, value);
+            }),
+        ].join('\n');
+
+        const waypointPlacemarks = data.waypoints.map((waypoint, index) => {
+            const waypointData = [
+                Visualization.#dataToKml(`${KML_DATA_PREFIX}kind`, 'waypoint', '            '),
+                Visualization.#dataToKml(`${KML_DATA_PREFIX}index`, index, '            '),
+                Visualization.#dataToKml(`${KML_DATA_PREFIX}altitude`, waypoint.altitude, '            '),
+                Visualization.#dataToKml(`${KML_DATA_PREFIX}smooth`, waypoint.smooth, '            '),
+                Visualization.#dataToKml(
+                    `${KML_DATA_PREFIX}altitude-manually-changed`,
+                    waypoint.altitudeManuallyChanged,
+                    '            '
+                ),
+            ].join('\n');
+
+            return `    <Placemark>
+      <name>Waypoint ${index + 1}</name>
+      <ExtendedData>
+${waypointData}
+      </ExtendedData>
+      <Point>
+        <altitudeMode>absolute</altitudeMode>
+        <coordinates>${Visualization.#waypointCoordinate(waypoint)}</coordinates>
+      </Point>
+    </Placemark>`;
+        }).join('\n');
+
+        let routePlacemark = '';
+        if (data.waypoints.length > 1) {
+            const routeCoordinates = data.waypoints
+                .map((waypoint) => `          ${Visualization.#waypointCoordinate(waypoint)}`)
+                .join('\n');
+            routePlacemark = `    <Placemark>
+      <name>Mission route</name>
+      <ExtendedData>
+${Visualization.#dataToKml(`${KML_DATA_PREFIX}kind`, 'route', '        ')}
+      </ExtendedData>
+      <LineString>
+        <tessellate>1</tessellate>
+        <altitudeMode>absolute</altitudeMode>
+        <coordinates>
+${routeCoordinates}
+        </coordinates>
+      </LineString>
+    </Placemark>`;
+        }
+
+        return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="${KML_NAMESPACE}">
+  <Document>
+    <name>UAV risk mission</name>
+    <ExtendedData>
+${documentData}
+    </ExtendedData>
+${waypointPlacemarks}
+${routePlacemark}
+  </Document>
+</kml>
+`;
+    }
+
+    static #elementsByLocalName(parent, localName) {
+        if (!parent || !parent.getElementsByTagNameNS) {
+            return [];
+        }
+        const namespaced = Array.from(parent.getElementsByTagNameNS('*', localName));
+        return namespaced.length > 0 ? namespaced : Array.from(parent.getElementsByTagName(localName));
+    }
+
+    static #firstElementByLocalName(parent, localName) {
+        return Visualization.#elementsByLocalName(parent, localName)[0] || null;
+    }
+
+    static #directChildByLocalName(parent, localName) {
+        if (!parent || !parent.children) {
+            return null;
+        }
+        return Array.from(parent.children).find((child) => child.localName === localName) || null;
+    }
+
+    static #readExtendedData(parent) {
+        const data = {};
+        const extendedData = Visualization.#directChildByLocalName(parent, 'ExtendedData');
+        if (!extendedData) {
+            return data;
+        }
+
+        for (const dataElement of Array.from(extendedData.children)) {
+            if (dataElement.localName !== 'Data') {
+                continue;
+            }
+            const name = dataElement.getAttribute('name');
+            if (!name) {
+                continue;
+            }
+            const valueElement = Visualization.#directChildByLocalName(dataElement, 'value');
+            data[name] = valueElement ? valueElement.textContent : dataElement.textContent;
+        }
+        return data;
+    }
+
+    static #parseKmlCoordinates(text) {
+        return String(text || '')
+            .trim()
+            .split(/\s+/)
+            .map((coordinate) => {
+                const [lngRaw, latRaw, altitudeRaw] = coordinate.split(',');
+                const lng = Number(lngRaw);
+                const lat = Number(latRaw);
+                const altitude = Number(altitudeRaw);
+                if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+                    return null;
+                }
+                if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+                    return null;
+                }
+                return {
+                    lat,
+                    lng,
+                    altitude: Number.isFinite(altitude) ? altitude : undefined,
+                };
+            })
+            .filter(Boolean);
+    }
+
+    static #parseBoolean(value, fallback = false) {
+        if (value === undefined || value === null) {
+            return fallback;
+        }
+        const normalized = String(value).trim().toLowerCase();
+        if (['true', '1', 'yes'].includes(normalized)) {
+            return true;
+        }
+        if (['false', '0', 'no'].includes(normalized)) {
+            return false;
+        }
+        return fallback;
+    }
+
+    static #numberOrFallback(value, fallback = undefined) {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : fallback;
+    }
+
+    static #parseKmlDataValue(value) {
+        const text = String(value ?? '').trim();
+        if (text.includes(',')) {
+            const values = text.split(',').map((part) => Number(part));
+            if (values.every((number) => Number.isFinite(number))) {
+                return values;
+            }
+        }
+        const number = Number(text);
+        return Number.isFinite(number) ? number : text;
+    }
+
+    #parseKmlMission(xmlDoc) {
+        const documentElement = Visualization.#firstElementByLocalName(xmlDoc, 'Document') || xmlDoc.documentElement;
+        const documentData = Visualization.#readExtendedData(documentElement);
+        const isUavRiskMission = documentData[`${KML_DATA_PREFIX}format`] === 'mission';
+        const sliders = {};
+        const settings = {};
+
+        for (const [name, value] of Object.entries(documentData)) {
+            if (name.startsWith(KML_SLIDER_PREFIX)) {
+                sliders[name.slice(KML_SLIDER_PREFIX.length)] = Visualization.#parseKmlDataValue(value);
+            } else if (name.startsWith(KML_SETTING_PREFIX)) {
+                settings[name.slice(KML_SETTING_PREFIX.length)] = value;
+            } else if (name === `${KML_DATA_PREFIX}selected-area`) {
+                settings.selectedArea = value;
+            }
+        }
+
+        const placemarks = Visualization.#elementsByLocalName(xmlDoc, 'Placemark');
+        let waypoints = [];
+        for (const placemark of placemarks) {
+            const data = Visualization.#readExtendedData(placemark);
+            const kind = data[`${KML_DATA_PREFIX}kind`];
+            const point = Visualization.#firstElementByLocalName(placemark, 'Point');
+            if (!point || (kind && kind !== 'waypoint')) {
+                continue;
+            }
+
+            const coordinatesElement = Visualization.#firstElementByLocalName(point, 'coordinates');
+            const coordinate = Visualization.#parseKmlCoordinates(coordinatesElement && coordinatesElement.textContent)[0];
+            if (!coordinate) {
+                continue;
+            }
+
+            waypoints.push({
+                lat: coordinate.lat,
+                lng: coordinate.lng,
+                altitude: Visualization.#numberOrFallback(data[`${KML_DATA_PREFIX}altitude`], coordinate.altitude),
+                smooth: Visualization.#parseBoolean(data[`${KML_DATA_PREFIX}smooth`], true),
+                altitudeManuallyChanged: Visualization.#parseBoolean(
+                    data[`${KML_DATA_PREFIX}altitude-manually-changed`],
+                    false
+                ),
+                index: Visualization.#numberOrFallback(data[`${KML_DATA_PREFIX}index`], waypoints.length),
+            });
+        }
+
+        if (waypoints.length === 0) {
+            const routePlacemark = placemarks.find((placemark) => {
+                const data = Visualization.#readExtendedData(placemark);
+                return data[`${KML_DATA_PREFIX}kind`] === 'route';
+            });
+            const lineString = routePlacemark
+                ? Visualization.#firstElementByLocalName(routePlacemark, 'LineString')
+                : Visualization.#firstElementByLocalName(xmlDoc, 'LineString');
+            const coordinatesElement = Visualization.#firstElementByLocalName(lineString, 'coordinates');
+            waypoints = Visualization.#parseKmlCoordinates(coordinatesElement && coordinatesElement.textContent)
+                .map((coordinate) => {
+                    return {
+                        lat: coordinate.lat,
+                        lng: coordinate.lng,
+                        altitude: coordinate.altitude,
+                        smooth: true,
+                        altitudeManuallyChanged: false,
+                    };
+                });
+        } else {
+            waypoints.sort((a, b) => a.index - b.index);
+            waypoints = waypoints.map(({ index, ...waypoint }) => waypoint);
+        }
+
+        if (waypoints.length === 0 && !isUavRiskMission) {
+            throw new Error('KML file does not contain waypoint Point or LineString coordinates.');
+        }
+
+        return { waypoints, sliders, settings };
     }
 
     #clearAllWaypoints() {
@@ -1641,9 +1936,58 @@ class Visualization {
         if (handler) handler.call(this, [target], 0);
     }
 
+    #applyMissionSettings(settings) {
+        if (!settings) {
+            return;
+        }
+        let value = undefined;
+        if (Object.prototype.hasOwnProperty.call(settings, 'segment-extension-enabled')) {
+            value = settings['segment-extension-enabled'];
+        } else if (Object.prototype.hasOwnProperty.call(settings, 'segmentExtensionEnabled')) {
+            value = settings.segmentExtensionEnabled;
+        }
+        if (value === undefined) {
+            return;
+        }
+        this.#segmentsExtensionCheckbox.checked = Visualization.#parseBoolean(value);
+        this.#onSegmentExtensionCheckboxChange();
+    }
+
+    #restoreWaypointDetails(waypoints) {
+        if (!Array.isArray(waypoints) || this.#nodesList.length === 0) {
+            return;
+        }
+
+        let touchedRoute = false;
+        for (let i = 0; i < waypoints.length && i < this.#nodesList.length; i++) {
+            const waypoint = waypoints[i];
+            const node = this.#nodesList[i];
+
+            if (Number.isFinite(Number(waypoint.altitude))) {
+                node.setAltitude(
+                    waypoint.altitude,
+                    Visualization.#parseBoolean(waypoint.altitudeManuallyChanged, false)
+                );
+                touchedRoute = true;
+            }
+
+            if (Object.prototype.hasOwnProperty.call(waypoint, 'smooth')) {
+                node.setSmooth(Visualization.#parseBoolean(waypoint.smooth, true));
+                touchedRoute = true;
+            }
+        }
+
+        if (touchedRoute && this.#edgesList.length > 0) {
+            this.#updateBuffersUnion("ground");
+            this.#updateBuffersUnion("air");
+            this.#computeRisksDebounced(this.#edgesList);
+        }
+    }
+
     #importMission(data) {
         const wps = (data && data.waypoints) || (Array.isArray(data) ? data : []);
         const sliders = (data && data.sliders) || {};
+        const settings = (data && data.settings) || {};
 
         this.#clearAllWaypoints();
 
@@ -1661,6 +2005,9 @@ class Visualization {
             }
         }
 
+        this.#applyMissionSettings(settings);
+        this.#restoreWaypointDetails(wps);
+
         if (wps.length > 0) {
             const valid = wps
                 .filter((w) => Number.isFinite(Number(w.lat)) && Number.isFinite(Number(w.lng)))
@@ -1673,17 +2020,31 @@ class Visualization {
 
     #exportMissionToFile() {
         const data = this.#serializeMission();
-        const json = JSON.stringify(data, null, 2);
-        const blob = new Blob([json], { type: 'application/json' });
+        const kml = this.#missionToKml(data);
+        const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        a.download = `uav-mission-${ts}.json`;
+        a.download = `uav-mission-${ts}.kml`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+    }
+
+    #importMissionText(text) {
+        const trimmed = String(text || '').trim();
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            this.#importMission(JSON.parse(trimmed));
+            return;
+        }
+
+        const xmlDoc = new DOMParser().parseFromString(trimmed, 'application/xml');
+        if (Visualization.#firstElementByLocalName(xmlDoc, 'parsererror')) {
+            throw new Error('Invalid KML/XML file.');
+        }
+        this.#importMission(this.#parseKmlMission(xmlDoc));
     }
 
     #initializeImportExport() {
@@ -1699,8 +2060,7 @@ class Visualization {
             if (!file) return;
             try {
                 const text = await file.text();
-                const data = JSON.parse(text);
-                this.#importMission(data);
+                this.#importMissionText(text);
             } catch (err) {
                 console.error('Failed to import mission:', err);
                 alert('Failed to import mission: ' + err.message);
