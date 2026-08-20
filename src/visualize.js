@@ -39,6 +39,12 @@ let dataViews = {
     "vastervik_area": [57.75, 16.63],
 }
 
+// Wall-collision layers exported from the liu-qra CFD post-processing. Only the
+// areas covered by a CFD simulation appear here.
+let windDataUrls = {
+    "nk_area": "./data/wind_collision_nk.geojson"
+}
+
 let dataZoomLevels = {
     "nk_area": 12,
     "stockholm_area": 11,
@@ -56,7 +62,8 @@ const KML_SETTING_PREFIX = `${KML_DATA_PREFIX}setting:`;
 const Layers = {
     Ground: "Ground risk",
     Air: "Air risk",
-    FirstParty: "1st-party risk"
+    FirstParty: "1st-party risk",
+    Wind: "Wind collision risk"
 }
 
 /**
@@ -138,9 +145,19 @@ class Visualization {
     #hasFirstPartyData;
     #activeLayer;
 
+    #windDataUrl;
+    #windDataPromise;
+    #windCollision;
+    #hasWindData;
+    #windSettings;
+    #windSpeedBins;
+    #windGeoJSONLayer;
+    #windSpeedSlider;
+
     constructor(selected_area) {
         this.#selectedArea = selected_area;
         this.#dataUrl = dataUrls[selected_area] ?? dataUrls["nk_area"];
+        this.#windDataUrl = windDataUrls[selected_area] ?? null;
         console.log(this.#dataUrl);
 
         this.#rectangleWidth = 200;
@@ -194,6 +211,15 @@ class Visualization {
         this.#rtreeData = null;
         this.#hasFirstPartyData = false;
         this.#activeLayer = Layers.Ground;
+
+        this.#windDataPromise = null;
+        this.#windCollision = null;
+        this.#hasWindData = false;
+        this.#windSpeedBins = [];
+        this.#windGeoJSONLayer = null;
+        // `empirical` averages over the observed wind record, `scenario` fixes the
+        // station wind speed picked with the slider.
+        this.#windSettings = {mode: 'empirical', resistance: 5, speedIndex: 0};
 
         // setting current year at footer
         document.getElementById("currentYear").textContent = new Date().getFullYear();;
@@ -264,6 +290,8 @@ class Visualization {
 
         // Check if data has 1st-party risk fields (Dn field)
         this.#checkFirstPartyDataAvailability();
+
+        await this.#initializeWindData();
     }
 
     /**
@@ -371,6 +399,173 @@ class Visualization {
     }
 
     /**
+    * initializeWindData method:
+    *   Loads the wall-collision layer once, and lets later callers await the
+    *   same load instead of fetching again.
+    */
+    #initializeWindData() {
+        if (!this.#windDataPromise) {
+            this.#windDataPromise = this.#loadWindData();
+        }
+        return this.#windDataPromise;
+    }
+
+    /**
+    * loadWindData method:
+    *   Reads the wall-collision layer of the selected area, when a CFD
+    *   simulation covers it. A missing or unreadable file only disables the
+    *   layer; the rest of the tool keeps working.
+    */
+    async #loadWindData() {
+        if (this.#windDataUrl) {
+            try {
+                this.#windCollision = await new Promise((resolve, reject) => {
+                    $.getJSON(this.#windDataUrl, (data) => resolve(data)).fail(reject);
+                });
+            } catch (error) {
+                console.error('Error fetching wind collision data:', error);
+            }
+        }
+
+        this.#windSpeedBins = this.#windMetadata().speed_bins_mps ?? [];
+        this.#hasWindData = this.#windCollision != null
+            && (this.#windCollision.features ?? []).length > 0
+            && this.#windSpeedBins.length > 1;
+        let defaultIndex = this.#windSpeedBins.indexOf(8);
+        this.#windSettings.speedIndex = defaultIndex >= 0 ? defaultIndex : 0;
+
+        this.#initializeWindControls();
+    }
+
+    /**
+    * windMetadata method:
+    *   Returns the description the exporter wrote next to the cells.
+    */
+    #windMetadata() {
+        return this.#windCollision ? (this.#windCollision.liu_qra ?? {}) : {};
+    }
+
+    /**
+    * initializeWindControls method:
+    *   Connects the wind collision settings to the map layer. Controls stay
+    *   disabled while the selected area has no CFD coverage.
+    */
+    #initializeWindControls() {
+        let resistanceSelect = document.getElementById('wind-resistance-select');
+        let modeInputs = document.querySelectorAll('input[name="wind_mode"]');
+        this.#windSpeedSlider = document.getElementById('wind-speed-slider');
+        if (!resistanceSelect || !this.#windSpeedSlider) {
+            return;
+        }
+
+        let resistances = this.#windMetadata().drone_resist_speeds_mps ?? [];
+        if (resistances.length > 0 && !resistances.includes(this.#windSettings.resistance)) {
+            this.#windSettings.resistance = resistances[0];
+        }
+        resistanceSelect.innerHTML = '';
+        for (let resistance of resistances) {
+            let option = document.createElement('option');
+            option.value = resistance;
+            option.textContent = `${resistance} m/s`;
+            option.selected = resistance === this.#windSettings.resistance;
+            resistanceSelect.appendChild(option);
+        }
+        resistanceSelect.disabled = !this.#hasWindData;
+        resistanceSelect.addEventListener('change', (event) => {
+            this.#windSettings.resistance = Number(event.target.value);
+            this.#refreshWindLayer();
+        });
+
+        for (let input of modeInputs) {
+            input.disabled = !this.#hasWindData;
+            input.checked = input.value === this.#windSettings.mode;
+            input.addEventListener('change', (event) => {
+                this.#windSettings.mode = event.target.value;
+                this.#updateWindSpeedSliderState();
+                this.#refreshWindLayer();
+            });
+        }
+
+        if (this.#hasWindData && !this.#windSpeedSlider.noUiSlider) {
+            noUiSlider.create(this.#windSpeedSlider, {
+                start: [this.#windSettings.speedIndex],
+                step: 1,
+                tooltips: {
+                    to: (value) => `${this.#windSpeedBins[Math.round(value)]} m/s`,
+                },
+                connect: 'lower',
+                range: {
+                'min': [0],
+                'max': [this.#windSpeedBins.length - 1]
+                },
+            });
+            this.#windSpeedSlider.noUiSlider.on('change', (values, handle) => {
+                this.#windSettings.speedIndex = Math.round(values[handle]);
+                this.#refreshWindLayer();
+            });
+        }
+        this.#updateWindSpeedSliderState();
+        this.#updateWindLegend();
+    }
+
+    /**
+    * updateWindSpeedSliderState method:
+    *   The station wind speed only applies to the scenario mode, so the slider
+    *   is disabled while the empirical record is shown.
+    */
+    #updateWindSpeedSliderState() {
+        if (!this.#windSpeedSlider || !this.#windSpeedSlider.noUiSlider) {
+            return;
+        }
+        if (this.#hasWindData && this.#windSettings.mode === 'scenario') {
+            this.#windSpeedSlider.noUiSlider.enable();
+        } else {
+            this.#windSpeedSlider.noUiSlider.disable();
+        }
+    }
+
+    /**
+    * refreshWindLayer method:
+    *   Redraws the wind collision choropleth with the current settings.
+    */
+    #refreshWindLayer() {
+        if (this.#windGeoJSONLayer) {
+            this.#windGeoJSONLayer.setStyle(Helpers.windCollisionStyling(this.#windSettings));
+        }
+        this.#updateWindLegend();
+    }
+
+    /**
+    * updateWindLegend method:
+    *   Draws the colour steps of the active wind reading, so the legend always
+    *   matches the scale the map is drawn with.
+    */
+    #updateWindLegend() {
+        let caption = document.getElementById('wind-legend-caption');
+        let legend = document.getElementById('wind-legend');
+        if (!caption || !legend) {
+            return;
+        }
+
+        caption.textContent = this.#windSettings.mode === 'empirical'
+            ? "Share of the observed wind record during which the cell's airspace reaches a building wall within the critical time:"
+            : "Share of the cell's airspace that reaches a building wall within the critical time, at the selected station wind speed:";
+
+        legend.innerHTML = '';
+        let steps = Helpers.windCollisionScale(this.#windSettings.mode).slice().reverse();
+        for (let step of steps) {
+            let swatch = document.createElement('span');
+            swatch.className = 'me-1';
+            swatch.style = `display:inline-block;width:18px;height:12px;background:${step.color};`;
+            let label = document.createElement('span');
+            label.className = 'me-3';
+            label.textContent = step.label;
+            legend.appendChild(swatch);
+            legend.appendChild(label);
+        }
+    }
+
+    /**
     * initializeMap method:
     *   Creates a Leaflet map with data from OpenStreetMap.
     *   Requires an html element with id `map` to exist.
@@ -393,6 +588,11 @@ class Visualization {
             attribution: '&copy <a href="http://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://www.lantmateriet.se/en/">Lantmäteriet</a>'
         });
 
+        let windLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 20,
+            attribution: '&copy <a href="http://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://www.lantmateriet.se/en/">Lantmäteriet</a>'
+        });
+
         this.#map = L.map('map', {
             doubleClickZoom: false,
             preferCanvas: true,
@@ -404,11 +604,17 @@ class Visualization {
         if (this.#hasFirstPartyData) {
             baseLayers[Layers.FirstParty] = firstPartyLayer;
         }
+        if (this.#hasWindData) {
+            baseLayers[Layers.Wind] = windLayer;
+        }
         let layerControl = L.control.layers(baseLayers, null, {collapsed: false}).addTo(this.#map);
 
         let groundGeoJSONLayer = L.geoJSON(this.#population, {style: Helpers.groundStyling}).addTo(this.#map);
         let airGeoJSONLayer = L.geoJSON(this.#population, {style: Helpers.airStyling});
         let firstPartyGeoJSONLayer = L.geoJSON(this.#population, {style: Helpers.firstPartyStyling});
+        this.#windGeoJSONLayer = this.#hasWindData
+            ? L.geoJSON(this.#windCollision, {style: Helpers.windCollisionStyling(this.#windSettings)})
+            : null;
 
         this.#groundBuffersUnionGeoJsonLayers.addTo(this.#map);
         this.#nodesGeoJsonLayersList.addTo(this.#map);
@@ -421,6 +627,9 @@ class Visualization {
             airGeoJSONLayer.remove();
             if (this.#hasFirstPartyData) {
                 firstPartyGeoJSONLayer.remove();
+            }
+            if (this.#windGeoJSONLayer) {
+                this.#windGeoJSONLayer.remove();
             }
             this.#groundBuffersUnionGeoJsonLayers.remove();
             this.#airBuffersUnionGeoJsonLayers.remove();
@@ -440,6 +649,10 @@ class Visualization {
                 firstPartyGeoJSONLayer.addTo(this.#map);
                 this.#groundBuffersUnionGeoJsonLayers.addTo(this.#map);
                 tabIdToActivate = '#first-party-risk-tab';
+            } else if (e.name === Layers.Wind && this.#windGeoJSONLayer) {
+                this.#windGeoJSONLayer.addTo(this.#map);
+                this.#groundBuffersUnionGeoJsonLayers.addTo(this.#map);
+                tabIdToActivate = '#wind-risk-tab';
             }
             this.#edgesGeoJsonLayersList.addTo(this.#map);
 

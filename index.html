@@ -140,6 +140,9 @@
                         <button class="nav-link" id="first-party-risk-tab" data-bs-toggle="tab" data-bs-target="#first-party-risk" type="button" role="tab" aria-controls="first-party-risk" aria-selected="false">1st-Party Risk Settings</button>
                     </li>
                     <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="wind-risk-tab" data-bs-toggle="tab" data-bs-target="#wind-risk" type="button" role="tab" aria-controls="wind-risk" aria-selected="false">Wind Collision Settings</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
                         <button class="nav-link" id="sora-tab" data-bs-toggle="tab" data-bs-target="#sora" type="button" role="tab" aria-controls="sora" aria-selected="false">SORA v2.5 Settings</button>
                     </li>
                 </ul>
@@ -206,6 +209,37 @@
                             <div class="col-md-6">
                                 <label class="form-label">Conflict mitigation factor <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Fraction of near mid-air conflicts that are mitigated (avoided). Default 0.95 means 95% of conflicts are mitigated and only 5% result in a fatality."></i></sup></label>
                                 <div id="mitigation-factor-slider"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Wind Collision Settings Tab -->
+                    <div class="tab-pane fade" id="wind-risk" role="tabpanel" aria-labelledby="wind-risk-tab">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <label class="form-label">Wind reading <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="The observed wind record averages the collision condition over every wind observation of the reference station, so it is an occurrence probability. A fixed station wind speed is a conditional scenario: it shows where the airspace is unsafe while the station reports that speed."></i></sup></label>
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="radio" name="wind_mode" id="wind-mode-empirical" value="empirical" checked>
+                                    <label class="form-check-label" for="wind-mode-empirical">Observed wind record</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="wind_mode" id="wind-mode-scenario" value="scenario">
+                                    <label class="form-check-label" for="wind-mode-scenario">Fixed station wind speed</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Drone wind resistance <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Horizontal wind speed the drone can hold against. Only the drift beyond this speed is assumed to push the drone towards a wall."></i></sup></label>
+                                <select id="wind-resistance-select" class="form-select" disabled></select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Station wind speed (m/s) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Wind speed measured at the reference weather station. The simulated city wind field scales linearly with it. Only used by the fixed wind speed reading."></i></sup></label>
+                                <div id="wind-speed-slider"></div>
+                            </div>
+                        </div>
+                        <div class="row mt-3">
+                            <div class="col-md-12">
+                                <div id="wind-legend-caption" class="small"></div>
+                                <div id="wind-legend" class="d-flex flex-wrap align-items-center mt-1 small"></div>
                             </div>
                         </div>
                     </div>

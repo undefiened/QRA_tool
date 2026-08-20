@@ -125,6 +125,96 @@ function getFirstPartyColor(d) {
                   '#FFEDA0';
 }
 
+/**
+* Colour scales for the wind collision layer. The observed wind record is an
+* occurrence probability spanning several orders of magnitude, while a fixed
+* wind speed gives an area share, so the two readings need their own scales.
+*/
+const windProbabilityScale = [
+    {limit: 1e-1, color: '#3f007d', label: '10%'},
+    {limit: 3e-2, color: '#54278f', label: '3%'},
+    {limit: 1e-2, color: '#6a51a3', label: '1%'},
+    {limit: 3e-3, color: '#807dba', label: '0.3%'},
+    {limit: 1e-3, color: '#9e9ac8', label: '0.1%'},
+    {limit: 3e-4, color: '#bcbddc', label: '0.03%'},
+    {limit: 1e-4, color: '#dadaeb', label: '0.01%'},
+    {limit: 0, color: '#efedf5', label: '>0'}
+];
+
+const windAreaScale = [
+    {limit: 5e-1, color: '#3f007d', label: '50%'},
+    {limit: 2e-1, color: '#54278f', label: '20%'},
+    {limit: 1e-1, color: '#6a51a3', label: '10%'},
+    {limit: 5e-2, color: '#807dba', label: '5%'},
+    {limit: 2e-2, color: '#9e9ac8', label: '2%'},
+    {limit: 1e-2, color: '#bcbddc', label: '1%'},
+    {limit: 2e-3, color: '#dadaeb', label: '0.2%'},
+    {limit: 0, color: '#efedf5', label: '>0'}
+];
+
+/**
+* windCollisionScale method:
+*   Returns the colour steps used by the given wind reading, strongest first.
+*/
+function windCollisionScale(mode) {
+    return mode === 'empirical' ? windProbabilityScale : windAreaScale;
+}
+
+/**
+* windCollisionValue method:
+*   Reads the wall-collision value of a cell for the current wind settings.
+*   In `empirical` mode this is the share of the SMHI observation period during
+*   which the cell's airspace pushes a drone into a wall. In `scenario` mode it
+*   is the share of the cell's airspace that does so at the selected station
+*   wind speed.
+*/
+function windCollisionValue(feature, settings) {
+    let properties = feature.properties;
+    if (settings.mode === 'empirical') {
+        return properties[`p_r${settings.resistance}`];
+    }
+    let curve = properties[`fw_r${settings.resistance}`];
+    return curve ? curve[settings.speedIndex] : null;
+}
+
+/**
+* windCollisionStyling method:
+*   Builds a styling function for the wind collision choropleth. The settings
+*   object is read on every call, so restyling only needs the layer redrawn.
+*/
+function windCollisionStyling(settings) {
+    return function (feature) {
+        let value = windCollisionValue(feature, settings);
+        if (!value) {
+            return { fillOpacity: 0, weight: 0, opacity: 0 };
+        }
+        return {
+            fillColor: getWindCollisionColor(value, settings.mode),
+            weight: 0,
+            opacity: 1,
+            color: 'CadetBlue',
+            dashArray: '10',
+            fillOpacity: 0.5
+        };
+    };
+}
+
+/**
+* getWindCollisionColor method:
+*   A function that returns map tiles color based on the share of the cell's
+*   airspace, or of the observation record, where wind drives a drone into a
+*   building wall.
+*/
+function getWindCollisionColor(d, mode) {
+    let scale = windCollisionScale(mode);
+    for (let step of scale) {
+        if (d > step.limit) {
+            return step.color;
+        }
+    }
+    return scale[scale.length - 1].color;
+}
+
 function groundBuffersStyle() {
     return {
         "color": "black",
@@ -191,5 +281,5 @@ function treeBboxIntersect(buffers, tree) {
     return Ids
 }
 
-export { groundStyling, airStyling, firstPartyStyling, groundBuffersStyle, airBuffersStyle, convertSpeed, createRTree, treeBboxIntersect };
+export { groundStyling, airStyling, firstPartyStyling, windCollisionStyling, windCollisionScale, groundBuffersStyle, airBuffersStyle, convertSpeed, createRTree, treeBboxIntersect };
 // ======================================= END OF FILE =======================================
