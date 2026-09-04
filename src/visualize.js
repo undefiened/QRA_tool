@@ -77,7 +77,6 @@ class Visualization {
      /*-------Instance variables-------*/
 
     static #EFR_THRESHOLD = 1e-9;
-
     #rectangleWidth;
     #nodesList;
     #edgesList;
@@ -153,6 +152,8 @@ class Visualization {
     #windSpeedBins;
     #windGeoJSONLayer;
     #windSpeedSlider;
+    #windRtree;
+    #windOverlapCache;
 
     constructor(selected_area) {
         this.#selectedArea = selected_area;
@@ -217,9 +218,11 @@ class Visualization {
         this.#hasWindData = false;
         this.#windSpeedBins = [];
         this.#windGeoJSONLayer = null;
+        this.#windRtree = null;
+        this.#windOverlapCache = new WeakMap();
         // `empirical` averages over the observed wind record, `scenario` fixes the
         // station wind speed picked with the slider.
-        this.#windSettings = {mode: 'empirical', resistance: 5, speedIndex: 0};
+        this.#windSettings = {mode: 'empirical', resistance: 5, speedIndex: 0, speedMps: null};
 
         // setting current year at footer
         document.getElementById("currentYear").textContent = new Date().getFullYear();;
@@ -433,8 +436,19 @@ class Visualization {
             && this.#windSpeedBins.length > 1;
         let defaultIndex = this.#windSpeedBins.indexOf(8);
         this.#windSettings.speedIndex = defaultIndex >= 0 ? defaultIndex : 0;
+        this.#windSettings.speedMps = this.#windSpeedBins[this.#windSettings.speedIndex] ?? null;
+
+        if (this.#hasWindData) {
+            try {
+                this.#windRtree = Helpers.createRTree(this.#windCollision.features);
+                this.#windOverlapCache = new WeakMap();
+            } catch (error) {
+                console.error('Error creating R-Tree of the wind collision data:', error);
+            }
+        }
 
         this.#initializeWindControls();
+        this.#updateWindLabels();
     }
 
     /**
@@ -501,6 +515,7 @@ class Visualization {
             });
             this.#windSpeedSlider.noUiSlider.on('change', (values, handle) => {
                 this.#windSettings.speedIndex = Math.round(values[handle]);
+                this.#windSettings.speedMps = this.#windSpeedBins[this.#windSettings.speedIndex];
                 this.#refreshWindLayer();
             });
         }
@@ -525,6 +540,120 @@ class Visualization {
     }
 
     /**
+    * formatWindExposure method:
+    *   Formats the dimensionless expected unsafe-wind exposure as a percentage.
+    */
+    static #formatWindExposure(fraction) {
+        return Number.isFinite(fraction) ? `${(100 * fraction).toExponential(2)}%` : 'N/A';
+    }
+
+    /**
+    * windOverlaps method:
+    *   Finds the exact intersections between one segment's ground-risk sausage
+    *   buffer and the source CFD cells. The overlap fraction distributes the
+    *   segment duration over those cells and is cached until the edge rebuilds
+    *   its buffer geometry.
+    */
+    #windOverlaps(edge) {
+        let cached = this.#windOverlapCache.get(edge);
+        if (cached && cached.buffer === edge.groundBuffer) {
+            return cached.overlaps;
+        }
+
+        let overlaps = [];
+        if (!(edge.groundArea > 0)) {
+            return overlaps;
+        }
+        let candidateIds = new Set(Helpers.treeBboxIntersect([edge.groundBuffer], this.#windRtree));
+        for (let id of candidateIds) {
+            let feature = this.#windCollision.features[id];
+            let intersection = turf.intersect(edge.groundBuffer, feature);
+            if (!intersection) {
+                continue;
+            }
+            let areaFraction = turf.area(intersection) / edge.groundArea;
+            if (areaFraction > 0) {
+                overlaps.push({id, areaFraction: Math.min(1, areaFraction)});
+            }
+        }
+        this.#windOverlapCache.set(edge, {buffer: edge.groundBuffer, overlaps});
+        return overlaps;
+    }
+
+    /**
+    * windExposures method:
+    *   Aggregates the buffer-area-weighted dwell time Ti for every distinct
+    *   source CFD cell intersected by the ground-risk sausage buffers.
+    */
+    #windExposures(edges) {
+        if (!this.#hasWindData || !this.#windRtree) {
+            return {cells: [], flightDurationSeconds: 0};
+        }
+
+        let byCell = new Map();
+        let flightDurationSeconds = 0;
+        for (let edge of edges) {
+            if (!(edge.length > 0) || !(this.#v_UA > 0)) {
+                continue;
+            }
+
+            let edgeDurationSeconds = edge.length / this.#v_UA;
+            flightDurationSeconds += edgeDurationSeconds;
+            for (let overlap of this.#windOverlaps(edge)) {
+                let feature = this.#windCollision.features[overlap.id];
+                let rawAlpha = Helpers.windCollisionValue(feature, this.#windSettings);
+                if (rawAlpha === null || rawAlpha === undefined) {
+                    continue;
+                }
+                let alpha = Number(rawAlpha);
+                if (!Number.isFinite(alpha)) {
+                    continue;
+                }
+                let exposure = byCell.get(overlap.id) ?? {
+                    alpha: Math.max(0, Math.min(1, alpha)),
+                    durationSeconds: 0,
+                };
+                exposure.durationSeconds += edgeDurationSeconds * overlap.areaFraction;
+                byCell.set(overlap.id, exposure);
+            }
+        }
+
+        return {cells: Array.from(byCell.values()), flightDurationSeconds};
+    }
+
+    /**
+    * windExposure method:
+    *   Computes sum(alpha_i * T_i) / H. T_i and H are both seconds, so the
+    *   result is independent of the weather observation cadence.
+    */
+    #windExposure(edges) {
+        let exposure = this.#windExposures(edges);
+        return Helpers.computeExpectedUnsafeWindExposure(
+            exposure.cells,
+            exposure.flightDurationSeconds,
+        );
+    }
+
+    /**
+    * updateWindLabels method:
+    *   Names the wind reading the collision columns are computed with.
+    */
+    #updateWindLabels() {
+        let label = 'N/A for this area';
+        if (this.#hasWindData) {
+            label = this.#windSettings.mode === 'empirical'
+                ? 'observed record'
+                : `at ${this.#windSpeedBins[this.#windSettings.speedIndex]} m/s`;
+        }
+        for (let id of ['wind-label-totals', 'wind-label-segments']) {
+            let element = document.getElementById(id);
+            if (element) {
+                element.textContent = label;
+            }
+        }
+    }
+
+    /**
     * refreshWindLayer method:
     *   Redraws the wind collision choropleth with the current settings.
     */
@@ -533,6 +662,9 @@ class Visualization {
             this.#windGeoJSONLayer.setStyle(Helpers.windCollisionStyling(this.#windSettings));
         }
         this.#updateWindLegend();
+        this.#updateWindLabels();
+        this.#computeTotalStatistics();
+        this.#edgesList.map((edge) => {this.#addSegmentRow(edge)});
     }
 
     /**
@@ -548,8 +680,8 @@ class Visualization {
         }
 
         caption.textContent = this.#windSettings.mode === 'empirical'
-            ? "Share of the observed wind record during which the cell's airspace reaches a building wall within the critical time:"
-            : "Share of the cell's airspace that reaches a building wall within the critical time, at the selected station wind speed:";
+            ? "Share of the observed wind record during which the source CFD cell reaches a building wall within the critical time:"
+            : "Source CFD cells that reach a building wall within the critical time at the selected station wind speed:";
 
         legend.innerHTML = '';
         let steps = Helpers.windCollisionScale(this.#windSettings.mode).slice().reverse();
@@ -613,7 +745,10 @@ class Visualization {
         let airGeoJSONLayer = L.geoJSON(this.#population, {style: Helpers.airStyling});
         let firstPartyGeoJSONLayer = L.geoJSON(this.#population, {style: Helpers.firstPartyStyling});
         this.#windGeoJSONLayer = this.#hasWindData
-            ? L.geoJSON(this.#windCollision, {style: Helpers.windCollisionStyling(this.#windSettings)})
+            ? L.geoJSON(this.#windCollision, {
+                style: Helpers.windCollisionStyling(this.#windSettings),
+                renderer: L.canvas({padding: 0.5}),
+            })
             : null;
 
         this.#groundBuffersUnionGeoJsonLayers.addTo(this.#map);
@@ -1148,12 +1283,14 @@ class Visualization {
         let firstPartyFatalityRate = totalArea ? firstPartyFatalityRateValue.toExponential(2) : 0;
         let totalTime = this.#totalMissionDuration;
 
+        let windExposure = Visualization.#formatWindExposure(this.#windExposure(this.#edgesList));
+
         let cells = this.#totalsTableElement.querySelector('tbody').querySelector('tr').querySelectorAll('td');
 
         let data = [Math.ceil(totalLength), Math.ceil(totalTime/60), Math.ceil(totalPopulationAtRisk),
                     Math.ceil(totalArea), efr, exposedDensity, maxExposedDensity, this.#totalNMAC_rate,
                     expectedNMAC, this.#totalFirstPartyNMAC_rate, expectedFirstPartyNMAC,
-                    firstPartyFatalityRate];
+                    firstPartyFatalityRate, windExposure];
 
         if (this.#ongoingComputation < 1) {
             for (let i = 0; i < cells.length; i++) {
@@ -1190,7 +1327,9 @@ class Visualization {
                                   (edge.expectedFirstPartyNMAC || 0).toExponential(2),
                                   segmentFirstPartyFatalityRate.toExponential(2)];
 
-        let data = generalData.concat(groundRiskData, airRiskData, firstPartyRiskData);
+        let windExposure = Visualization.#formatWindExposure(this.#windExposure([edge]));
+
+        let data = generalData.concat(groundRiskData, airRiskData, firstPartyRiskData, [windExposure]);
 
         if (this.#edgesList.length === rows.length) {
             // edge already exist
@@ -1218,6 +1357,7 @@ class Visualization {
             this.#addDataBlockToRow(newRow, groundRiskData, 'table-warning');
             this.#addDataBlockToRow(newRow, airRiskData, 'table-primary');
             this.#addDataBlockToRow(newRow, firstPartyRiskData, 'table-success');
+            this.#addDataBlockToRow(newRow, windRiskData, 'table-secondary');
 
             let cells = newRow.querySelectorAll('td');
             this.#applyEFRStyle(cells[7], segmentEFRValue);
@@ -1731,6 +1871,7 @@ class Visualization {
         ground: [0, 5000],
         air: [0, 200],
         firstParty: [5000, 50000],
+        wind: [0, 1],
     };
 
     #getEdgeRiskValue(edge) {
@@ -1738,6 +1879,8 @@ class Visualization {
             return edge.NMAC_rate || 0;
         } else if (this.#activeLayer === Layers.FirstParty) {
             return edge.firstPartyNMAC_rate || 0;
+        } else if (this.#activeLayer === Layers.Wind) {
+            return this.#windExposure([edge]);
         }
         return edge.population || 0;
     }
@@ -1747,6 +1890,8 @@ class Visualization {
             return Visualization.#RISK_RANGES.air;
         } else if (this.#activeLayer === Layers.FirstParty) {
             return Visualization.#RISK_RANGES.firstParty;
+        } else if (this.#activeLayer === Layers.Wind) {
+            return Visualization.#RISK_RANGES.wind;
         }
         return Visualization.#RISK_RANGES.ground;
     }

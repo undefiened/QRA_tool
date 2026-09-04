@@ -141,15 +141,8 @@ const windProbabilityScale = [
     {limit: 0, color: '#efedf5', label: '>0'}
 ];
 
-const windAreaScale = [
-    {limit: 5e-1, color: '#3f007d', label: '50%'},
-    {limit: 2e-1, color: '#54278f', label: '20%'},
-    {limit: 1e-1, color: '#6a51a3', label: '10%'},
-    {limit: 5e-2, color: '#807dba', label: '5%'},
-    {limit: 2e-2, color: '#9e9ac8', label: '2%'},
-    {limit: 1e-2, color: '#bcbddc', label: '1%'},
-    {limit: 2e-3, color: '#dadaeb', label: '0.2%'},
-    {limit: 0, color: '#efedf5', label: '>0'}
+const windScenarioScale = [
+    {limit: 0, color: '#3f007d', label: 'Unsafe'},
 ];
 
 /**
@@ -157,24 +150,51 @@ const windAreaScale = [
 *   Returns the colour steps used by the given wind reading, strongest first.
 */
 function windCollisionScale(mode) {
-    return mode === 'empirical' ? windProbabilityScale : windAreaScale;
+    return mode === 'empirical' ? windProbabilityScale : windScenarioScale;
 }
 
 /**
 * windCollisionValue method:
 *   Reads the wall-collision value of a cell for the current wind settings.
 *   In `empirical` mode this is the share of the SMHI observation period during
-*   which the cell's airspace pushes a drone into a wall. In `scenario` mode it
-*   is the share of the cell's airspace that does so at the selected station
-*   wind speed.
+*   which the source CFD cell pushes a drone into a wall. In `scenario` mode the
+*   selected station speed is compared directly with that cell's minimum
+*   required station-wind speed.
 */
 function windCollisionValue(feature, settings) {
     let properties = feature.properties;
     if (settings.mode === 'empirical') {
         return properties[`p_r${settings.resistance}`];
     }
-    let curve = properties[`fw_r${settings.resistance}`];
-    return curve ? curve[settings.speedIndex] : null;
+    let threshold = Number(properties[`min_r${settings.resistance}`]);
+    let stationSpeed = Number(settings.speedMps);
+    if (!Number.isFinite(threshold) || !Number.isFinite(stationSpeed)) {
+        return 0;
+    }
+    return stationSpeed >= threshold ? 1 : 0;
+}
+
+/**
+* computeExpectedUnsafeWindExposure method:
+*   Returns the time-weighted share of the mission exposed to unsafe wind:
+*   sum(alpha_i * T_i) / H. T_i and H use the same time unit, so the result is
+*   dimensionless and does not depend on the weather-data sampling interval.
+*/
+function computeExpectedUnsafeWindExposure(exposures, flightDurationSeconds) {
+    if (!(flightDurationSeconds > 0)) {
+        return 0;
+    }
+
+    let expectedUnsafeSeconds = 0;
+    for (let exposure of exposures) {
+        let alpha = Math.max(0, Math.min(1, Number(exposure.alpha)));
+        let durationSeconds = Math.max(0, Number(exposure.durationSeconds));
+        if (!Number.isFinite(alpha) || !Number.isFinite(durationSeconds)) {
+            continue;
+        }
+        expectedUnsafeSeconds += alpha * durationSeconds;
+    }
+    return Math.max(0, Math.min(1, expectedUnsafeSeconds / flightDurationSeconds));
 }
 
 /**
@@ -250,8 +270,8 @@ function createRTree(features) {
     let tree = new RBush();
 
     let items = features.map((block, index) => {
-        let coords = block['geometry']['coordinates'][0][0];
-        return {minX: coords[0][0], minY: coords[3][1], maxX: coords[2][0], maxY: coords[1][1], id: index};
+        let [minX, minY, maxX, maxY] = turf.bbox(block);
+        return {minX, minY, maxX, maxY, id: index};
     }
     );
 
@@ -281,5 +301,5 @@ function treeBboxIntersect(buffers, tree) {
     return Ids
 }
 
-export { groundStyling, airStyling, firstPartyStyling, windCollisionStyling, windCollisionScale, groundBuffersStyle, airBuffersStyle, convertSpeed, createRTree, treeBboxIntersect };
+export { groundStyling, airStyling, firstPartyStyling, windCollisionStyling, windCollisionScale, windCollisionValue, computeExpectedUnsafeWindExposure, groundBuffersStyle, airBuffersStyle, convertSpeed, createRTree, treeBboxIntersect };
 // ======================================= END OF FILE =======================================
