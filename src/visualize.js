@@ -524,17 +524,13 @@ class Visualization {
 
     /**
     * updateWindSpeedSliderState method:
-    *   The station wind speed only applies to the scenario mode, so the slider
-    *   is disabled while the empirical record is shown.
+    *   The station wind speed only means anything for the scenario mode, so the
+    *   whole setting is hidden while the observed record is shown.
     */
     #updateWindSpeedSliderState() {
-        if (!this.#windSpeedSlider || !this.#windSpeedSlider.noUiSlider) {
-            return;
-        }
-        if (this.#hasWindData && this.#windSettings.mode === 'scenario') {
-            this.#windSpeedSlider.noUiSlider.enable();
-        } else {
-            this.#windSpeedSlider.noUiSlider.disable();
+        let column = document.getElementById('wind-speed-col');
+        if (column) {
+            column.hidden = !(this.#hasWindData && this.#windSettings.mode === 'scenario');
         }
     }
 
