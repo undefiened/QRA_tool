@@ -1,16 +1,16 @@
 <!--
     Copyright (C) 2023 hahas94
-    
+
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -->
@@ -100,9 +100,9 @@
                   <th scope="col" class="table-success">EFR (/flight hour)
                     <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip"
                         title="Expected first-party fatality rate per flight hour. Computed as NMAC/hour × people in own vehicle × (1 − mitigation factor)."></i></sup></th>
-                  <th scope="col" class="table-secondary">Expected unsafe-wind exposure (%)
+                  <th scope="col" class="table-secondary">Equivalent unsafe-wind distance (m)
                     <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip"
-                        title="Time-weighted unsafe-wind exposure: 100 × Σᵢ αᵢTᵢ / H. αᵢ is the unsafe-wind share for source CFD cell i (or 0/1 in the fixed-speed scenario), Tᵢ is the segment duration assigned by sausage-buffer intersection area, and H is total mission duration. This dimensionless percentage does not use the observation sampling interval."></i></sup></th>
+                        title="The route length that would carry the same unsafe-wind exposure if the wind were certainly unsafe along all of it, ∫κ(s)ds over the centre line. κ is the unsafe-wind probability of the source CFD cell under the route"></i></sup></th>
                 </tr>
               </thead>
               <tbody>
@@ -326,7 +326,7 @@
                       <th scope="col" class="table-success">NMAC of the mission</th>
                       <th scope="col" class="table-success">EFR (/flight hour)</th>
 
-                      <th scope="col" class="table-secondary">Expected unsafe-wind exposure (%)</th>
+                      <th scope="col" class="table-secondary">Equivalent unsafe-wind distance (m)</th>
                     </tr>
                 </thead>
                 <tbody class="table-group-divider">

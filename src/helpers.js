@@ -19,6 +19,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 * File contains helper functions that can be used by different classes.
 */
 
+import {equivalentDistance} from './equivalent_distance.mjs';
+
 
 /**
 * styling method:
@@ -166,35 +168,13 @@ function windCollisionValue(feature, settings) {
     if (settings.mode === 'empirical') {
         return properties[`p_r${settings.resistance}`];
     }
-    let threshold = Number(properties[`min_r${settings.resistance}`]);
+    let requiredSpeed = properties[`min_r${settings.resistance}`];
+    let threshold = requiredSpeed === null || requiredSpeed === undefined ? NaN : Number(requiredSpeed);
     let stationSpeed = Number(settings.speedMps);
     if (!Number.isFinite(threshold) || !Number.isFinite(stationSpeed)) {
         return 0;
     }
     return stationSpeed >= threshold ? 1 : 0;
-}
-
-/**
-* computeExpectedUnsafeWindExposure method:
-*   Returns the time-weighted share of the mission exposed to unsafe wind:
-*   sum(alpha_i * T_i) / H. T_i and H use the same time unit, so the result is
-*   dimensionless and does not depend on the weather-data sampling interval.
-*/
-function computeExpectedUnsafeWindExposure(exposures, flightDurationSeconds) {
-    if (!(flightDurationSeconds > 0)) {
-        return 0;
-    }
-
-    let expectedUnsafeSeconds = 0;
-    for (let exposure of exposures) {
-        let alpha = Math.max(0, Math.min(1, Number(exposure.alpha)));
-        let durationSeconds = Math.max(0, Number(exposure.durationSeconds));
-        if (!Number.isFinite(alpha) || !Number.isFinite(durationSeconds)) {
-            continue;
-        }
-        expectedUnsafeSeconds += alpha * durationSeconds;
-    }
-    return Math.max(0, Math.min(1, expectedUnsafeSeconds / flightDurationSeconds));
 }
 
 /**
@@ -301,5 +281,5 @@ function treeBboxIntersect(buffers, tree) {
     return Ids
 }
 
-export { groundStyling, airStyling, firstPartyStyling, windCollisionStyling, windCollisionScale, windCollisionValue, computeExpectedUnsafeWindExposure, groundBuffersStyle, airBuffersStyle, convertSpeed, createRTree, treeBboxIntersect };
+export { groundStyling, airStyling, firstPartyStyling, windCollisionStyling, windCollisionScale, windCollisionValue, equivalentDistance, groundBuffersStyle, airBuffersStyle, convertSpeed, createRTree, treeBboxIntersect };
 // ======================================= END OF FILE =======================================
