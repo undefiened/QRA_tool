@@ -136,6 +136,7 @@ class Visualization {
     #mitigationFactor;
 
     #population;
+    #dataPromise;
     #timeoutId;
     #ongoingComputation;
     #useRTree;
@@ -152,7 +153,6 @@ class Visualization {
     #windSettings;
     #windSpeedBins;
     #windGeoJSONLayer;
-    #windSpeedSlider;
     #windRtree;
     #windSampleCache;
 
@@ -207,6 +207,7 @@ class Visualization {
 
 
         this.#population = null;  // population data in geojson format.
+        this.#dataPromise = null;  // the one-time area data load
         this.#timeoutId = null;  // used for debouncing method call
         this.#ongoingComputation = 0;
         this.#useRTree = true;
@@ -260,7 +261,18 @@ class Visualization {
 
     }
 
-    async #initializeData() {
+    #initializeData() {
+        return this.#dataPromise ??= this.#loadAreaData();
+    }
+
+    /**
+    * loadAreaData method:
+    *   Reads the population and wind data of the selected area. Runs once per
+    *   instance: every route edit awaits `#initializeData`, and re-reading the
+    *   data would refetch both files and reset the wind settings underneath
+    *   the controls the user already moved.
+    */
+    async #loadAreaData() {
         let promise = new Promise((resolve, reject) => {
            $.getJSON(this.#dataUrl, function(data, status, xhr) {
                 if (status === 'success') {
@@ -450,7 +462,7 @@ class Visualization {
     #initializeWindControls() {
         let resistanceSelect = document.getElementById('wind-resistance-select');
         let modeInputs = document.querySelectorAll('input[name="wind_mode"]');
-        this.#windSpeedSlider = document.getElementById('wind-speed-slider');
+        let windSpeedSlider = document.getElementById('wind-speed-slider');
 
         let resistances = this.#windMetadata().drone_resist_speeds_mps ?? [];
         if (resistances.length > 0 && !resistances.includes(this.#windSettings.resistance)) {
@@ -481,8 +493,8 @@ class Visualization {
             });
         }
 
-        if (this.#windSpeedBins.length > 1 && !this.#windSpeedSlider.noUiSlider) {
-            noUiSlider.create(this.#windSpeedSlider, {
+        if (this.#windSpeedBins.length > 1 && !windSpeedSlider.noUiSlider) {
+            noUiSlider.create(windSpeedSlider, {
                 start: [this.#windSettings.speedIndex],
                 step: 1,
                 tooltips: {
@@ -494,7 +506,7 @@ class Visualization {
                 'max': [this.#windSpeedBins.length - 1]
                 },
             });
-            this.#windSpeedSlider.noUiSlider.on('change', (values, handle) => {
+            windSpeedSlider.noUiSlider.on('change', (values, handle) => {
                 this.#windSettings.speedIndex = Math.round(values[handle]);
                 this.#windSettings.speedMps = this.#windSpeedBins[this.#windSettings.speedIndex];
                 this.#refreshWindLayer();
@@ -545,9 +557,11 @@ class Visualization {
     *   rather than probabilities keeps the cache across wind readings.
     */
     #windRouteSamples(edge) {
-        let latlngs = edge.polyline.getLatLngs();
+        // Keyed on the coordinates, not on the array `setLatLngs` rebuilds on
+        // every edit, so an altitude-only change keeps the samples.
+        let key = JSON.stringify(edge.polyline.getLatLngs());
         let cached = this.#windSampleCache.get(edge);
-        if (cached && cached.latlngs === latlngs) {
+        if (cached && cached.key === key) {
             return cached.samples;
         }
 
@@ -566,7 +580,7 @@ class Visualization {
             }
         }
 
-        this.#windSampleCache.set(edge, {latlngs, samples});
+        this.#windSampleCache.set(edge, {key, samples});
         return samples;
     }
 
@@ -718,6 +732,13 @@ class Visualization {
             } else if (e.name === Layers.Wind && this.#windGeoJSONLayer) {
                 this.#windGeoJSONLayer.addTo(this.#map);
                 this.#groundBuffersUnionGeoJsonLayers.addTo(this.#map);
+                // The CFD domain is a ~1.7 km square whose cells are smaller
+                // than a pixel at the default zoom, so zoom to it unless the
+                // view is already inside the domain.
+                let windBounds = this.#windGeoJSONLayer.getBounds();
+                if (!windBounds.contains(this.#map.getBounds())) {
+                    this.#map.fitBounds(windBounds);
+                }
                 tabIdToActivate = '#wind-risk-tab';
             }
             this.#edgesGeoJsonLayersList.addTo(this.#map);
