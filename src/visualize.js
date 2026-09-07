@@ -77,6 +77,8 @@ class Visualization {
      /*-------Instance variables-------*/
 
     static #EFR_THRESHOLD = 1e-9;
+    static #DEFAULT_STATION_WIND_MPS = 8;
+
     #rectangleWidth;
     #nodesList;
     #edgesList;
@@ -145,7 +147,6 @@ class Visualization {
     #activeLayer;
 
     #windDataUrl;
-    #windDataPromise;
     #windCollision;
     #hasWindData;
     #windSettings;
@@ -213,7 +214,6 @@ class Visualization {
         this.#hasFirstPartyData = false;
         this.#activeLayer = Layers.Ground;
 
-        this.#windDataPromise = null;
         this.#windCollision = null;
         this.#hasWindData = false;
         this.#windSpeedBins = [];
@@ -294,7 +294,7 @@ class Visualization {
         // Check if data has 1st-party risk fields (Dn field)
         this.#checkFirstPartyDataAvailability();
 
-        await this.#initializeWindData();
+        await this.#loadWindData();
     }
 
     /**
@@ -402,18 +402,6 @@ class Visualization {
     }
 
     /**
-    * initializeWindData method:
-    *   Loads the wall-collision layer once, and lets later callers await the
-    *   same load instead of fetching again.
-    */
-    #initializeWindData() {
-        if (!this.#windDataPromise) {
-            this.#windDataPromise = this.#loadWindData();
-        }
-        return this.#windDataPromise;
-    }
-
-    /**
     * loadWindData method:
     *   Reads the wall-collision layer of the selected area, when a CFD
     *   simulation covers it. A missing or unreadable file only disables the
@@ -422,9 +410,7 @@ class Visualization {
     async #loadWindData() {
         if (this.#windDataUrl) {
             try {
-                this.#windCollision = await new Promise((resolve, reject) => {
-                    $.getJSON(this.#windDataUrl, (data) => resolve(data)).fail(reject);
-                });
+                this.#windCollision = await $.getJSON(this.#windDataUrl);
             } catch (error) {
                 console.error('Error fetching wind collision data:', error);
             }
@@ -432,16 +418,14 @@ class Visualization {
 
         this.#windSpeedBins = this.#windMetadata().speed_bins_mps ?? [];
         this.#hasWindData = this.#windCollision != null
-            && (this.#windCollision.features ?? []).length > 0
-            && this.#windSpeedBins.length > 1;
-        let defaultIndex = this.#windSpeedBins.indexOf(8);
+            && (this.#windCollision.features ?? []).length > 0;
+        let defaultIndex = this.#windSpeedBins.indexOf(Visualization.#DEFAULT_STATION_WIND_MPS);
         this.#windSettings.speedIndex = defaultIndex >= 0 ? defaultIndex : 0;
         this.#windSettings.speedMps = this.#windSpeedBins[this.#windSettings.speedIndex] ?? null;
 
         if (this.#hasWindData) {
             try {
                 this.#windRtree = Helpers.createRTree(this.#windCollision.features);
-                this.#windSampleCache = new WeakMap();
             } catch (error) {
                 console.error('Error creating R-Tree of the wind collision data:', error);
             }
@@ -467,9 +451,6 @@ class Visualization {
         let resistanceSelect = document.getElementById('wind-resistance-select');
         let modeInputs = document.querySelectorAll('input[name="wind_mode"]');
         this.#windSpeedSlider = document.getElementById('wind-speed-slider');
-        if (!resistanceSelect || !this.#windSpeedSlider) {
-            return;
-        }
 
         let resistances = this.#windMetadata().drone_resist_speeds_mps ?? [];
         if (resistances.length > 0 && !resistances.includes(this.#windSettings.resistance)) {
@@ -490,7 +471,8 @@ class Visualization {
         });
 
         for (let input of modeInputs) {
-            input.disabled = !this.#hasWindData;
+            input.disabled = !this.#hasWindData
+                || (input.value === 'scenario' && this.#windSpeedBins.length < 2);
             input.checked = input.value === this.#windSettings.mode;
             input.addEventListener('change', (event) => {
                 this.#windSettings.mode = event.target.value;
@@ -499,7 +481,7 @@ class Visualization {
             });
         }
 
-        if (this.#hasWindData && !this.#windSpeedSlider.noUiSlider) {
+        if (this.#windSpeedBins.length > 1 && !this.#windSpeedSlider.noUiSlider) {
             noUiSlider.create(this.#windSpeedSlider, {
                 start: [this.#windSettings.speedIndex],
                 step: 1,
@@ -528,18 +510,8 @@ class Visualization {
     *   whole setting is hidden while the observed record is shown.
     */
     #updateWindSpeedSliderState() {
-        let column = document.getElementById('wind-speed-col');
-        if (column) {
-            column.hidden = !(this.#hasWindData && this.#windSettings.mode === 'scenario');
-        }
-    }
-
-    /**
-    * formatEquivalentDistance method:
-    *   Formats the exposure integral as an equivalent distance in metres.
-    */
-    static #formatEquivalentDistance(distanceMeters) {
-        return Number.isFinite(distanceMeters) ? distanceMeters.toExponential(2) : 'N/A';
+        document.getElementById('wind-speed-col').hidden =
+            !(this.#hasWindData && this.#windSettings.mode === 'scenario');
     }
 
     /**
@@ -573,8 +545,9 @@ class Visualization {
     *   rather than probabilities keeps the cache across wind readings.
     */
     #windRouteSamples(edge) {
+        let latlngs = edge.polyline.getLatLngs();
         let cached = this.#windSampleCache.get(edge);
-        if (cached && cached.geometry === edge.groundBuffer) {
+        if (cached && cached.latlngs === latlngs) {
             return cached.samples;
         }
 
@@ -593,19 +566,8 @@ class Visualization {
             }
         }
 
-        this.#windSampleCache.set(edge, {geometry: edge.groundBuffer, samples});
+        this.#windSampleCache.set(edge, {latlngs, samples});
         return samples;
-    }
-
-    /**
-    * windProbability method:
-    *   Reads one source CFD cell's unsafe-wind probability, zero off-domain.
-    */
-    #windProbability(cellId) {
-        if (cellId < 0) {
-            return 0;
-        }
-        return Helpers.windCollisionValue(this.#windCollision.features[cellId], this.#windSettings);
     }
 
     /**
@@ -624,7 +586,8 @@ class Visualization {
                 continue;
             }
             exposure += Helpers.equivalentDistance(
-                samples.cellIds.map((cellId) => this.#windProbability(cellId)),
+                samples.cellIds.map((cellId) => cellId < 0 ? 0
+                    : Helpers.windCollisionValue(this.#windCollision.features[cellId], this.#windSettings)),
                 samples.segmentDistances,
             );
         }
@@ -642,7 +605,12 @@ class Visualization {
         }
         this.#updateWindLegend();
         this.#computeTotalStatistics();
-        this.#edgesList.map((edge) => {this.#addSegmentRow(edge)});
+        for (let edge of this.#edgesList) {
+            this.#addSegmentRow(edge);
+        }
+        if (this.#segmentsTableVisible) {
+            this.#refreshSegmentColors();
+        }
     }
 
     /**
@@ -653,9 +621,6 @@ class Visualization {
     #updateWindLegend() {
         let caption = document.getElementById('wind-legend-caption');
         let legend = document.getElementById('wind-legend');
-        if (!caption || !legend) {
-            return;
-        }
 
         caption.textContent = this.#windSettings.mode === 'empirical'
             ? "Share of the observed wind record during which the source CFD cell reaches a building wall within the critical time:"
@@ -683,25 +648,13 @@ class Visualization {
     async #initializeMap() {
         await this.#initializeData();
 
-        let groundLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 20,
-            attribution: '&copy <a href="http://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://www.lantmateriet.se/en/">Lantmäteriet</a>'
-        });
-
-        let airLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 20,
-            attribution: '&copy <a href="http://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://www.lantmateriet.se/en/">Lantmäteriet</a>'
-        });
-
-        let firstPartyLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 20,
-            attribution: '&copy <a href="http://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://www.lantmateriet.se/en/">Lantmäteriet</a>'
-        });
-
-        let windLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 20,
-            attribution: '&copy <a href="http://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://www.lantmateriet.se/en/">Lantmäteriet</a>'
-        });
+        // One base layer per risk view, so the layer control doubles as the view switch.
+        let [groundLayer, airLayer, firstPartyLayer, windLayer] = Array.from({length: 4}, () =>
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 20,
+                attribution: '&copy <a href="http://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://www.lantmateriet.se/en/">Lantmäteriet</a>'
+            })
+        );
 
         this.#map = L.map('map', {
             doubleClickZoom: false,
@@ -1261,9 +1214,7 @@ class Visualization {
         let firstPartyFatalityRate = totalArea ? firstPartyFatalityRateValue.toExponential(2) : 0;
         let totalTime = this.#totalMissionDuration;
 
-        let equivalentDistance = Visualization.#formatEquivalentDistance(
-            this.#windEquivalentDistance(this.#edgesList),
-        );
+        let equivalentDistance = this.#windEquivalentDistance(this.#edgesList).toExponential(2);
 
         let cells = this.#totalsTableElement.querySelector('tbody').querySelector('tr').querySelectorAll('td');
 
@@ -1307,11 +1258,7 @@ class Visualization {
                                   (edge.expectedFirstPartyNMAC || 0).toExponential(2),
                                   segmentFirstPartyFatalityRate.toExponential(2)];
 
-        let equivalentDistance = Visualization.#formatEquivalentDistance(
-            this.#windEquivalentDistance([edge]),
-        );
-
-        let windRiskData = [equivalentDistance];
+        let windRiskData = [this.#windEquivalentDistance([edge]).toExponential(2)];
         let data = generalData.concat(groundRiskData, airRiskData, firstPartyRiskData, windRiskData);
 
         if (this.#edgesList.length === rows.length) {
@@ -1873,7 +1820,7 @@ class Visualization {
         } else if (this.#activeLayer === Layers.FirstParty) {
             return Visualization.#RISK_RANGES.firstParty;
         } else if (this.#activeLayer === Layers.Wind) {
-            return [0, Math.max(1, ...this.#edgesList.map((edge) => edge.length))];
+            return [0, Math.max(0, ...this.#edgesList.map((edge) => this.#windEquivalentDistance([edge])))];
         }
         return Visualization.#RISK_RANGES.ground;
     }

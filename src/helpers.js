@@ -19,46 +19,47 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 * File contains helper functions that can be used by different classes.
 */
 
-import {equivalentDistance} from './equivalent_distance.mjs';
-
-
 /**
-* styling method:
-*   A function that styles tiles for choropleth map.
+* choroplethStyling method:
+*   Builds a Leaflet style function for a choropleth layer. `readValue` reads a
+*   feature's value and `getColor` maps it to a colour; cells without a value
+*   are drawn as nothing at all.
 */
-function groundStyling(feature) {
-    let value = feature.properties.B;
-    if (value === 0 || value === null || value === undefined) {
-        return { fillOpacity: 0, weight: 0, opacity: 0 };
-    }
-    return {
-        fillColor: getGroundColor(value),
-        weight: 0,
-        opacity: 1,
-        color: 'CadetBlue',
-        dashArray: '10',
-        fillOpacity: 0.5
+function choroplethStyling(readValue, getColor) {
+    return function (feature) {
+        let value = readValue(feature);
+        if (!value) {
+            return { fillOpacity: 0, weight: 0, opacity: 0 };
+        }
+        return {
+            fillColor: getColor(value),
+            weight: 0,
+            opacity: 1,
+            fillOpacity: 0.5
+        };
     };
 }
 
 /**
-* styling method:
-*   A function that styles tiles for choropleth map.
+* equivalentDistance method:
+*   Integrates a probability sampled along a route, giving the equivalent length
+*   of route flown under that condition. Takes one probability per sample point
+*   and the distance between consecutive samples.
 */
-function airStyling(feature) {
-    let value = feature.properties.T;
-    if (value === 0 || value === null || value === undefined) {
-        return { fillOpacity: 0, weight: 0, opacity: 0 };
+function equivalentDistance(probabilities, segmentDistances) {
+    if (probabilities.length !== segmentDistances.length + 1) {
+        throw new Error('equivalentDistance needs one more probability than segment distances.');
     }
-    return {
-        fillColor: getAirColor(value),
-        weight: 0,
-        opacity: 1,
-        color: 'CadetBlue',
-        dashArray: '10',
-        fillOpacity: 0.5
-    };
+
+    let exposure = 0;
+    for (let index = 0; index < segmentDistances.length; index++) {
+        exposure += (probabilities[index] + probabilities[index + 1]) / 2 * segmentDistances[index];
+    }
+
+    return exposure;
 }
+
+const groundStyling = choroplethStyling((feature) => feature.properties.B, getGroundColor);
 
 /**
 * getGroundColor method:
@@ -76,6 +77,8 @@ function getGroundColor(d) {
                   '#FFEDA0';
 }
 
+const airStyling = choroplethStyling((feature) => feature.properties.T, getAirColor);
+
 /**
 * getAirColor method:
 *   A function that returns map tiles color based on flights times.
@@ -92,24 +95,7 @@ function getAirColor(d) {
                   '#FFEDA0';
 }
 
-/**
-* firstPartyStyling method:
-*   A function that styles tiles for choropleth map based on Dn values (1st-party risk).
-*/
-function firstPartyStyling(feature) {
-    let value = feature.properties.Dn;
-    if (value === 0 || value === null || value === undefined) {
-        return { fillOpacity: 0, weight: 0, opacity: 0 };
-    }
-    return {
-        fillColor: getFirstPartyColor(value),
-        weight: 0,
-        opacity: 1,
-        color: 'CadetBlue',
-        dashArray: '10',
-        fillOpacity: 0.5
-    };
-}
+const firstPartyStyling = choroplethStyling((feature) => feature.properties.Dn, getFirstPartyColor);
 
 /**
 * getFirstPartyColor method:
@@ -166,7 +152,7 @@ function windCollisionScale(mode) {
 function windCollisionValue(feature, settings) {
     let properties = feature.properties;
     if (settings.mode === 'empirical') {
-        return properties[`p_r${settings.resistance}`];
+        return properties[`p_r${settings.resistance}`] ?? 0;
     }
     let requiredSpeed = properties[`min_r${settings.resistance}`];
     let threshold = requiredSpeed === null || requiredSpeed === undefined ? NaN : Number(requiredSpeed);
@@ -179,34 +165,23 @@ function windCollisionValue(feature, settings) {
 
 /**
 * windCollisionStyling method:
-*   Builds a styling function for the wind collision choropleth. The settings
-*   object is read on every call, so restyling only needs the layer redrawn.
+*   Builds a styling function for the wind collision choropleth, for the wind
+*   reading the settings select. Changing the settings needs a new function.
 */
 function windCollisionStyling(settings) {
-    return function (feature) {
-        let value = windCollisionValue(feature, settings);
-        if (!value) {
-            return { fillOpacity: 0, weight: 0, opacity: 0 };
-        }
-        return {
-            fillColor: getWindCollisionColor(value, settings.mode),
-            weight: 0,
-            opacity: 1,
-            color: 'CadetBlue',
-            dashArray: '10',
-            fillOpacity: 0.5
-        };
-    };
+    let scale = windCollisionScale(settings.mode);
+    return choroplethStyling(
+        (feature) => windCollisionValue(feature, settings),
+        (value) => getWindCollisionColor(value, scale),
+    );
 }
 
 /**
 * getWindCollisionColor method:
-*   A function that returns map tiles color based on the share of the cell's
-*   airspace, or of the observation record, where wind drives a drone into a
-*   building wall.
+*   Returns the colour of the given wind collision value on the given scale,
+*   whose steps are ordered strongest first.
 */
-function getWindCollisionColor(d, mode) {
-    let scale = windCollisionScale(mode);
+function getWindCollisionColor(d, scale) {
     for (let step of scale) {
         if (d > step.limit) {
             return step.color;
