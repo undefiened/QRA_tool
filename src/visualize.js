@@ -321,96 +321,42 @@ class Visualization {
         );
         console.log('Has first-party data:', this.#hasFirstPartyData);
 
-        if (!this.#hasFirstPartyData) {
-            this.#disableFirstPartyRiskUI();
-        } else {
-            this.#enableFirstPartyRiskUI();
-        }
-    }
-
-    /**
-    * disableFirstPartyRiskUI method:
-    *   Disables and grays out all 1st-party risk UI elements when data doesn't support it.
-    */
-    #disableFirstPartyRiskUI() {
-        // Disable 1st-party risk tab
-        const firstPartyTab = document.getElementById('first-party-risk-tab');
-        if (firstPartyTab) {
-            firstPartyTab.disabled = true;
-            firstPartyTab.classList.add('disabled');
-            firstPartyTab.style.opacity = '0.5';
-            firstPartyTab.style.cursor = 'not-allowed';
-        }
-
-        // Update labels to show "N/A for this area"
-        const totalsLabel = document.getElementById('first-party-label-totals');
-        const segmentsLabel = document.getElementById('first-party-label-segments');
-        if (totalsLabel) {
-            totalsLabel.textContent = 'N/A for this area';
-        }
-        if (segmentsLabel) {
-            segmentsLabel.textContent = 'N/A for this area';
-        }
-
-        // Gray out 1st-party risk columns in totals table
-        const totalsTableHeaders = document.querySelectorAll('#totals-table-header .table-success');
-        const totalsTableCells = document.querySelectorAll('#totals-table tbody .table-success');
-        [...totalsTableHeaders, ...totalsTableCells].forEach(element => {
-            element.style.opacity = '0.5';
-            element.style.cursor = 'not-allowed';
-            element.title = '1st-party risk data not available for this area';
-        });
-
-        // Gray out 1st-party risk columns in segments table
-        const segmentsTableHeaders = document.querySelectorAll('#segment-totals-table-header .table-success');
-        const segmentsTableCells = document.querySelectorAll('#segments-table tbody .table-success');
-        [...segmentsTableHeaders, ...segmentsTableCells].forEach(element => {
-            element.style.opacity = '0.5';
-            element.style.cursor = 'not-allowed';
-            element.title = '1st-party risk data not available for this area';
+        this.#setRiskColumnAvailability(this.#hasFirstPartyData, {
+            cellClass: 'table-success',
+            tabId: 'first-party-risk-tab',
+            labelIds: ['first-party-label-totals', 'first-party-label-segments'],
+            reason: '1st-party risk data not available for this area',
         });
     }
 
     /**
-    * enableFirstPartyRiskUI method:
-    *   Enables all 1st-party risk UI elements when data supports it.
+    * setRiskColumnAvailability method:
+    *   Marks one risk column as unavailable for the selected area: the header
+    *   label says so, its cells gray out and its settings tab is closed.
     */
-    #enableFirstPartyRiskUI() {
-        // Enable 1st-party risk tab
-        const firstPartyTab = document.getElementById('first-party-risk-tab');
-        if (firstPartyTab) {
-            firstPartyTab.disabled = false;
-            firstPartyTab.classList.remove('disabled');
-            firstPartyTab.style.opacity = '1';
-            firstPartyTab.style.cursor = 'pointer';
+    #setRiskColumnAvailability(available, {cellClass, tabId, labelIds, reason}) {
+        let tab = document.getElementById(tabId);
+        if (tab) {
+            tab.disabled = !available;
+            tab.classList.toggle('disabled', !available);
+            tab.style.opacity = available ? '1' : '0.5';
+            tab.style.cursor = available ? 'pointer' : 'not-allowed';
+            if (!available && tab.classList.contains('active')) {
+                bootstrap.Tab.getOrCreateInstance(document.getElementById('ground-risk-tab')).show();
+            }
         }
 
-        const totalsLabel = document.getElementById('first-party-label-totals');
-        const segmentsLabel = document.getElementById('first-party-label-segments');
-        if (totalsLabel) {
-            totalsLabel.textContent = '';
-        }
-        if (segmentsLabel) {
-            segmentsLabel.textContent = '';
+        for (let id of labelIds) {
+            document.getElementById(id).textContent = available ? '' : 'N/A for this area';
         }
 
-        // Restore 1st-party risk columns in totals table
-        const totalsTableHeaders = document.querySelectorAll('#totals-table-header .table-success');
-        const totalsTableCells = document.querySelectorAll('#totals-table tbody .table-success');
-        [...totalsTableHeaders, ...totalsTableCells].forEach(element => {
-            element.style.opacity = '1';
-            element.style.cursor = 'default';
-            element.title = '';
-        });
-
-        // Restore 1st-party risk columns in segments table
-        const segmentsTableHeaders = document.querySelectorAll('#segment-totals-table-header .table-success');
-        const segmentsTableCells = document.querySelectorAll('#segments-table tbody .table-success');
-        [...segmentsTableHeaders, ...segmentsTableCells].forEach(element => {
-            element.style.opacity = '1';
-            element.style.cursor = 'default';
-            element.title = '';
-        });
+        for (let selector of [`#totals-table .${cellClass}`, `#segments-table .${cellClass}`]) {
+            for (let cell of document.querySelectorAll(selector)) {
+                cell.style.opacity = available ? '1' : '0.5';
+                cell.style.cursor = available ? 'default' : 'not-allowed';
+                cell.title = available ? '' : reason;
+            }
+        }
     }
 
     /**
@@ -506,14 +452,26 @@ class Visualization {
                 'max': [this.#windSpeedBins.length - 1]
                 },
             });
-            windSpeedSlider.noUiSlider.on('change', (values, handle) => {
-                this.#windSettings.speedIndex = Math.round(values[handle]);
-                this.#windSettings.speedMps = this.#windSpeedBins[this.#windSettings.speedIndex];
-                this.#refreshWindLayer();
-            });
+            windSpeedSlider.noUiSlider.on('change', this.#onWindSpeedSliderChange.bind(this));
         }
         this.#updateWindSpeedSliderState();
         this.#updateWindLegend();
+        this.#setRiskColumnAvailability(this.#hasWindData, {
+            cellClass: 'table-secondary',
+            tabId: 'wind-risk-tab',
+            labelIds: ['wind-label-totals', 'wind-label-segments'],
+            reason: 'No CFD wind simulation covers this area',
+        });
+    }
+
+    /**
+    * onWindSpeedSliderChange method:
+    *   Applies the station wind speed picked with the slider.
+    */
+    #onWindSpeedSliderChange(values, handle) {
+        this.#windSettings.speedIndex = Math.round(values[handle]);
+        this.#windSettings.speedMps = this.#windSpeedBins[this.#windSettings.speedIndex];
+        this.#refreshWindLayer();
     }
 
     /**
@@ -1235,7 +1193,8 @@ class Visualization {
         let firstPartyFatalityRate = totalArea ? firstPartyFatalityRateValue.toExponential(2) : 0;
         let totalTime = this.#totalMissionDuration;
 
-        let equivalentDistance = this.#windEquivalentDistance(this.#edgesList).toExponential(2);
+        let equivalentDistance = this.#hasWindData
+            ? this.#windEquivalentDistance(this.#edgesList).toExponential(2) : 'N/A';
 
         let cells = this.#totalsTableElement.querySelector('tbody').querySelector('tr').querySelectorAll('td');
 
@@ -1279,7 +1238,8 @@ class Visualization {
                                   (edge.expectedFirstPartyNMAC || 0).toExponential(2),
                                   segmentFirstPartyFatalityRate.toExponential(2)];
 
-        let windRiskData = [this.#windEquivalentDistance([edge]).toExponential(2)];
+        let windRiskData = [this.#hasWindData
+            ? this.#windEquivalentDistance([edge]).toExponential(2) : 'N/A'];
         let data = generalData.concat(groundRiskData, airRiskData, firstPartyRiskData, windRiskData);
 
         if (this.#edgesList.length === rows.length) {
@@ -1902,6 +1862,7 @@ class Visualization {
             ['other-drone-speed-slider', this.#otherDroneSpeedSlider, this.#onOtherDroneSpeedSliderChange],
             ['people-in-vehicle-slider', this.#peopleInVehicleSlider, this.#onPeopleInVehicleSliderChange],
             ['mitigation-factor-slider', this.#mitigationFactorSlider, this.#onMitigationFactorSliderChange],
+            ['wind-speed-slider', document.getElementById('wind-speed-slider'), this.#onWindSpeedSliderChange],
         ];
     }
 
@@ -1926,6 +1887,8 @@ class Visualization {
         const settings = {
             selectedArea: this.#selectedArea,
             segmentExtensionEnabled: Boolean(this.#segmentsExtensionCheckbox && this.#segmentsExtensionCheckbox.checked),
+            windMode: this.#windSettings.mode,
+            windResistance: this.#windSettings.resistance,
         };
         return { waypoints, sliders, settings };
     }
@@ -1973,6 +1936,8 @@ class Visualization {
             Visualization.#dataToKml(`${KML_DATA_PREFIX}version`, '1'),
             Visualization.#dataToKml(`${KML_DATA_PREFIX}selected-area`, data.settings.selectedArea),
             Visualization.#dataToKml(`${KML_SETTING_PREFIX}segment-extension-enabled`, data.settings.segmentExtensionEnabled),
+            Visualization.#dataToKml(`${KML_SETTING_PREFIX}wind-mode`, data.settings.windMode),
+            Visualization.#dataToKml(`${KML_SETTING_PREFIX}wind-resistance`, data.settings.windResistance),
             ...Object.entries(data.sliders || {}).map(([id, value]) => {
                 return Visualization.#dataToKml(`${KML_SLIDER_PREFIX}${id}`, value);
             }),
@@ -2248,17 +2213,30 @@ ${routePlacemark}
         if (!settings) {
             return;
         }
-        let value = undefined;
-        if (Object.prototype.hasOwnProperty.call(settings, 'segment-extension-enabled')) {
-            value = settings['segment-extension-enabled'];
-        } else if (Object.prototype.hasOwnProperty.call(settings, 'segmentExtensionEnabled')) {
-            value = settings.segmentExtensionEnabled;
+
+        const extensionEnabled = settings['segment-extension-enabled'] ?? settings.segmentExtensionEnabled;
+        if (extensionEnabled !== undefined) {
+            this.#segmentsExtensionCheckbox.checked = Visualization.#parseBoolean(extensionEnabled);
+            this.#onSegmentExtensionCheckboxChange();
         }
-        if (value === undefined) {
-            return;
+
+        // Driving the wind controls the way a click does keeps the settings, the
+        // legend and the totals in step, and an unknown value simply finds no
+        // control to change.
+        const mode = settings['wind-mode'] ?? settings.windMode;
+        const modeInput = [...document.querySelectorAll('input[name="wind_mode"]')]
+            .find((input) => input.value === mode && !input.disabled);
+        if (modeInput) {
+            modeInput.checked = true;
+            modeInput.dispatchEvent(new Event('change'));
         }
-        this.#segmentsExtensionCheckbox.checked = Visualization.#parseBoolean(value);
-        this.#onSegmentExtensionCheckboxChange();
+
+        const resistanceSelect = document.getElementById('wind-resistance-select');
+        const resistance = String(settings['wind-resistance'] ?? settings.windResistance);
+        if (!resistanceSelect.disabled && [...resistanceSelect.options].some((o) => o.value === resistance)) {
+            resistanceSelect.value = resistance;
+            resistanceSelect.dispatchEvent(new Event('change'));
+        }
     }
 
     #restoreWaypointDetails(waypoints) {
