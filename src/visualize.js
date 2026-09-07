@@ -448,7 +448,6 @@ class Visualization {
         }
 
         this.#initializeWindControls();
-        this.#updateWindLabels();
     }
 
     /**
@@ -638,25 +637,6 @@ class Visualization {
     }
 
     /**
-    * updateWindLabels method:
-    *   Names the wind reading the collision columns are computed with.
-    */
-    #updateWindLabels() {
-        let label = 'N/A for this area';
-        if (this.#hasWindData) {
-            label = this.#windSettings.mode === 'empirical'
-                ? 'observed record'
-                : `at ${this.#windSpeedBins[this.#windSettings.speedIndex]} m/s`;
-        }
-        for (let id of ['wind-label-totals', 'wind-label-segments']) {
-            let element = document.getElementById(id);
-            if (element) {
-                element.textContent = label;
-            }
-        }
-    }
-
-    /**
     * refreshWindLayer method:
     *   Redraws the wind collision choropleth with the current settings.
     */
@@ -665,7 +645,6 @@ class Visualization {
             this.#windGeoJSONLayer.setStyle(Helpers.windCollisionStyling(this.#windSettings));
         }
         this.#updateWindLegend();
-        this.#updateWindLabels();
         this.#computeTotalStatistics();
         this.#edgesList.map((edge) => {this.#addSegmentRow(edge)});
     }
