@@ -137,6 +137,7 @@ class Visualization {
 
     #population;
     #dataPromise;
+    #lifecycleController = new AbortController();
     #timeoutId;
     #ongoingComputation;
     #useRTree;
@@ -406,6 +407,9 @@ class Visualization {
     *   disabled while the selected area has no CFD coverage.
     */
     #initializeWindControls() {
+        const {signal} = this.#lifecycleController;
+        if (signal.aborted) return;
+
         let resistanceSelect = document.getElementById('wind-resistance-select');
         let modeInputs = document.querySelectorAll('input[name="wind_mode"]');
         let windSpeedSlider = document.getElementById('wind-speed-slider');
@@ -426,7 +430,7 @@ class Visualization {
         resistanceSelect.addEventListener('change', (event) => {
             this.#windSettings.resistance = Number(event.target.value);
             this.#refreshWindLayer();
-        });
+        }, {signal});
 
         for (let input of modeInputs) {
             input.disabled = !this.#hasWindData
@@ -436,11 +440,11 @@ class Visualization {
                 this.#windSettings.mode = event.target.value;
                 this.#updateWindSpeedSliderState();
                 this.#refreshWindLayer();
-            });
+            }, {signal});
         }
 
-        if (this.#windSpeedBins.length > 1 && !windSpeedSlider.noUiSlider) {
-            noUiSlider.create(windSpeedSlider, {
+        if (this.#windSpeedBins.length > 1) {
+            const slider = noUiSlider.create(windSpeedSlider, {
                 start: [this.#windSettings.speedIndex],
                 step: 1,
                 tooltips: {
@@ -452,7 +456,8 @@ class Visualization {
                 'max': [this.#windSpeedBins.length - 1]
                 },
             });
-            windSpeedSlider.noUiSlider.on('change', this.#onWindSpeedSliderChange.bind(this));
+            slider.on('change', this.#onWindSpeedSliderChange.bind(this));
+            signal.addEventListener('abort', () => slider.destroy(), {once: true});
         }
         this.#updateWindSpeedSliderState();
         this.#updateWindLegend();
@@ -619,6 +624,7 @@ class Visualization {
     */
     async #initializeMap() {
         await this.#initializeData();
+        if (this.#lifecycleController.signal.aborted) return;
 
         // One base layer per risk view, so the layer control doubles as the view switch.
         let [groundLayer, airLayer, firstPartyLayer, windLayer] = Array.from({length: 4}, () =>
@@ -722,6 +728,7 @@ class Visualization {
     *   Destroys the map so that the widget can be reinitialized.
     */
     deinitializeMap() {
+        this.#lifecycleController.abort();
         // this.#map.off();
         if(this.#map != undefined) {
             this.#map.remove();
