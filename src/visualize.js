@@ -138,6 +138,7 @@ class Visualization {
     #population;
     #dataPromise;
     #lifecycleController = new AbortController();
+    #workers = new Set();
     #timeoutId;
     #ongoingComputation;
     #useRTree;
@@ -289,6 +290,7 @@ class Visualization {
         } catch (error) {
           console.error('Error fetching data:', error);
         }
+        if (this.#lifecycleController.signal.aborted) return;
 
         if (this.#useRTree) {
             try {
@@ -374,6 +376,7 @@ class Visualization {
                 console.error('Error fetching wind collision data:', error);
             }
         }
+        if (this.#lifecycleController.signal.aborted) return;
 
         this.#windSpeedBins = this.#windMetadata().speed_bins_mps ?? [];
         this.#hasWindData = this.#windCollision != null
@@ -457,7 +460,6 @@ class Visualization {
                 },
             });
             slider.on('change', this.#onWindSpeedSliderChange.bind(this));
-            signal.addEventListener('abort', () => slider.destroy(), {once: true});
         }
         this.#updateWindSpeedSliderState();
         this.#updateWindLegend();
@@ -728,11 +730,21 @@ class Visualization {
     *   Destroys the map so that the widget can be reinitialized.
     */
     deinitializeMap() {
+        if (this.#lifecycleController.signal.aborted) return;
         this.#lifecycleController.abort();
-        // this.#map.off();
+        clearTimeout(this.#timeoutId);
+        for (const worker of this.#workers) worker.terminate();
+        this.#workers.clear();
+        for (const [, slider] of this.#sliderRegistry()) {
+            slider?.noUiSlider?.destroy();
+        }
         if(this.#map != undefined) {
             this.#map.remove();
         }
+        this.#segmentsTableElement.querySelector('tbody').replaceChildren();
+        this.#segmentsTableContainer.style.display = 'none';
+        this.#toggleSegmentsTableButton.textContent = 'Show';
+        this.#hideSpinner();
     }
 
     /**
@@ -742,7 +754,7 @@ class Visualization {
     #initTooltips() {
         let tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
         let tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-          return new bootstrap.Tooltip(tooltipTriggerEl)
+          return bootstrap.Tooltip.getOrCreateInstance(tooltipTriggerEl)
         })
     }
 
@@ -1006,6 +1018,7 @@ class Visualization {
     */
     async #computeRisks(edges) {
         await this.#initializeData();
+        if (this.#lifecycleController.signal.aborted) return;
 
         if (this.#groundBuffersUnion) {
             if (this.#ongoingComputation < 1) {
@@ -1045,6 +1058,7 @@ class Visualization {
                 let subset = blocks.slice(start, end);
 
                 let worker = new Worker(workersUrl);
+                this.#workers.add(worker);
                 let groundBuffers = edges.map((edge) => {return edge.groundBuffer});
                 let airBuffers = edges.map((edge) => {return edge.airBuffer});
                 let circles = edges.map((edge) => {
@@ -1055,6 +1069,7 @@ class Visualization {
                 worker.postMessage([subset, groundBuffers, airBuffers, circles, tileArea]);
 
                 worker.onmessage = function(event) {
+                    if (this.#lifecycleController.signal.aborted) return;
                     let [edgesIntersectedPopulation, circlesPopulations, edgesTimes,
                          edgesAverageSpeeds, edgesMaxPopulations, edgesDroneDensities] = event.data;
 
@@ -1125,8 +1140,9 @@ class Visualization {
                             this.#refreshSegmentColors();
                         }
 
-                        workers.forEach(function(worker) {
+                        workers.forEach((worker) => {
                             worker.terminate();
+                            this.#workers.delete(worker);
                         });
                     }
                 }.bind(this);
@@ -1552,7 +1568,8 @@ class Visualization {
             return;
         }
         this.#mtbfInput.value = this.#mtbfFlightHours;
-        this.#mtbfInput.addEventListener('input', this.#onMTBFInputChange.bind(this));
+        this.#mtbfInput.addEventListener('input', this.#onMTBFInputChange.bind(this),
+            {signal: this.#lifecycleController.signal});
     }
 
     #onMTBFInputChange(event) {
@@ -1753,7 +1770,9 @@ class Visualization {
     }
 
     #initializeSegmentExtensionCheckbox() {
-        this.#segmentsExtensionCheckbox.addEventListener('change', this.#onSegmentExtensionCheckboxChange.bind(this));
+        this.#segmentsExtensionCheckbox.checked = false;
+        this.#segmentsExtensionCheckbox.addEventListener('change', this.#onSegmentExtensionCheckboxChange.bind(this),
+            {signal: this.#lifecycleController.signal});
     }
 
     #initializeSegmentsTableToggle() {
@@ -1768,7 +1787,7 @@ class Visualization {
                 this.#toggleSegmentsTableButton.textContent = 'Show';
                 this.#applySingleColorSegments();
             }
-        });
+        }, {signal: this.#lifecycleController.signal});
     }
 
     #applyMultiColorSegments() {
@@ -2345,22 +2364,25 @@ ${routePlacemark}
         const importBtn = document.getElementById('import-mission-btn');
         const fileInput = document.getElementById('import-mission-input');
         if (!exportBtn || !importBtn || !fileInput) return;
+        const {signal} = this.#lifecycleController;
 
-        exportBtn.addEventListener('click', () => this.#exportMissionToFile());
-        importBtn.addEventListener('click', () => fileInput.click());
+        exportBtn.addEventListener('click', () => this.#exportMissionToFile(), {signal});
+        importBtn.addEventListener('click', () => fileInput.click(), {signal});
         fileInput.addEventListener('change', async (event) => {
             const file = event.target.files && event.target.files[0];
             if (!file) return;
             try {
                 const text = await file.text();
+                if (signal.aborted) return;
                 this.#importMissionText(text);
             } catch (err) {
+                if (signal.aborted) return;
                 console.error('Failed to import mission:', err);
                 alert('Failed to import mission: ' + err.message);
             } finally {
-                fileInput.value = '';
+                if (!signal.aborted) fileInput.value = '';
             }
-        });
+        }, {signal});
     }
 }
 
