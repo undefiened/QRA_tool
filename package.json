@@ -4,7 +4,8 @@
   "description": "A tool for determining the number of people at risk of flying drones falling, as well as computing the probability of drones colliding with other aircraft.",
   "main": "script.js",
   "scripts": {
-    "test": "jest --coverage ./tests"
+    "test": "jest --coverage ./tests",
+    "test:wind": "node --test tests/wind.test.mjs"
   },
   "keywords": [
     "UAV",

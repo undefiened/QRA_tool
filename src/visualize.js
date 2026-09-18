@@ -39,6 +39,12 @@ let dataViews = {
     "vastervik_area": [57.75, 16.63],
 }
 
+// Wall-collision layers exported from the liu-qra CFD post-processing. Only the
+// areas covered by a CFD simulation appear here.
+let windDataUrls = {
+    "nk_area": "./data/wind_collision_nk.geojson"
+}
+
 let dataZoomLevels = {
     "nk_area": 12,
     "stockholm_area": 11,
@@ -56,7 +62,8 @@ const KML_SETTING_PREFIX = `${KML_DATA_PREFIX}setting:`;
 const Layers = {
     Ground: "Ground risk",
     Air: "Air risk",
-    FirstParty: "1st-party risk"
+    FirstParty: "1st-party risk",
+    Wind: "Wind collision risk"
 }
 
 /**
@@ -70,6 +77,7 @@ class Visualization {
      /*-------Instance variables-------*/
 
     static #EFR_THRESHOLD = 1e-9;
+    static #DEFAULT_STATION_WIND_MPS = 8;
 
     #rectangleWidth;
     #nodesList;
@@ -108,6 +116,7 @@ class Visualization {
     #speedSlider;
     #extensionSlider;
     #globalAltitudeSlider;
+    #windAltitudeSlider;
     #droneDensitySlider;
     #droneTrafficDensity;
     #otherDroneSpeedSlider;
@@ -128,6 +137,9 @@ class Visualization {
     #mitigationFactor;
 
     #population;
+    #dataPromise;
+    #lifecycleController = new AbortController();
+    #workers = new Set();
     #timeoutId;
     #ongoingComputation;
     #useRTree;
@@ -138,9 +150,19 @@ class Visualization {
     #hasFirstPartyData;
     #activeLayer;
 
+    #windDataUrl;
+    #windCollision;
+    #hasWindData;
+    #windSettings;
+    #windSpeedBins;
+    #windGeoJSONLayer;
+    #windRtree;
+    #windSampleCache;
+
     constructor(selected_area) {
         this.#selectedArea = selected_area;
         this.#dataUrl = dataUrls[selected_area] ?? dataUrls["nk_area"];
+        this.#windDataUrl = windDataUrls[selected_area] ?? null;
         console.log(this.#dataUrl);
 
         this.#rectangleWidth = 200;
@@ -188,12 +210,23 @@ class Visualization {
 
 
         this.#population = null;  // population data in geojson format.
+        this.#dataPromise = null;  // the one-time area data load
         this.#timeoutId = null;  // used for debouncing method call
         this.#ongoingComputation = 0;
         this.#useRTree = true;
         this.#rtreeData = null;
         this.#hasFirstPartyData = false;
         this.#activeLayer = Layers.Ground;
+
+        this.#windCollision = null;
+        this.#hasWindData = false;
+        this.#windSpeedBins = [];
+        this.#windGeoJSONLayer = null;
+        this.#windRtree = null;
+        this.#windSampleCache = new WeakMap();
+        // `empirical` averages over the observed wind record, `scenario` fixes the
+        // station wind speed picked with the slider.
+        this.#windSettings = {mode: 'empirical', resistance: 5, speedIndex: 0, speedMps: null};
 
         // setting current year at footer
         document.getElementById("currentYear").textContent = new Date().getFullYear();;
@@ -231,7 +264,18 @@ class Visualization {
 
     }
 
-    async #initializeData() {
+    #initializeData() {
+        return this.#dataPromise ??= this.#loadAreaData();
+    }
+
+    /**
+    * loadAreaData method:
+    *   Reads the population and wind data of the selected area. Runs once per
+    *   instance: every route edit awaits `#initializeData`, and re-reading the
+    *   data would refetch both files and reset the wind settings underneath
+    *   the controls the user already moved.
+    */
+    async #loadAreaData() {
         let promise = new Promise((resolve, reject) => {
            $.getJSON(this.#dataUrl, function(data, status, xhr) {
                 if (status === 'success') {
@@ -247,6 +291,7 @@ class Visualization {
         } catch (error) {
           console.error('Error fetching data:', error);
         }
+        if (this.#lifecycleController.signal.aborted) return;
 
         if (this.#useRTree) {
             try {
@@ -264,6 +309,8 @@ class Visualization {
 
         // Check if data has 1st-party risk fields (Dn field)
         this.#checkFirstPartyDataAvailability();
+
+        await this.#loadWindData();
     }
 
     /**
@@ -278,96 +325,315 @@ class Visualization {
         );
         console.log('Has first-party data:', this.#hasFirstPartyData);
 
-        if (!this.#hasFirstPartyData) {
-            this.#disableFirstPartyRiskUI();
-        } else {
-            this.#enableFirstPartyRiskUI();
-        }
-    }
-
-    /**
-    * disableFirstPartyRiskUI method:
-    *   Disables and grays out all 1st-party risk UI elements when data doesn't support it.
-    */
-    #disableFirstPartyRiskUI() {
-        // Disable 1st-party risk tab
-        const firstPartyTab = document.getElementById('first-party-risk-tab');
-        if (firstPartyTab) {
-            firstPartyTab.disabled = true;
-            firstPartyTab.classList.add('disabled');
-            firstPartyTab.style.opacity = '0.5';
-            firstPartyTab.style.cursor = 'not-allowed';
-        }
-
-        // Update labels to show "N/A for this area"
-        const totalsLabel = document.getElementById('first-party-label-totals');
-        const segmentsLabel = document.getElementById('first-party-label-segments');
-        if (totalsLabel) {
-            totalsLabel.textContent = 'N/A for this area';
-        }
-        if (segmentsLabel) {
-            segmentsLabel.textContent = 'N/A for this area';
-        }
-
-        // Gray out 1st-party risk columns in totals table
-        const totalsTableHeaders = document.querySelectorAll('#totals-table-header .table-success');
-        const totalsTableCells = document.querySelectorAll('#totals-table tbody .table-success');
-        [...totalsTableHeaders, ...totalsTableCells].forEach(element => {
-            element.style.opacity = '0.5';
-            element.style.cursor = 'not-allowed';
-            element.title = '1st-party risk data not available for this area';
-        });
-
-        // Gray out 1st-party risk columns in segments table
-        const segmentsTableHeaders = document.querySelectorAll('#segment-totals-table-header .table-success');
-        const segmentsTableCells = document.querySelectorAll('#segments-table tbody .table-success');
-        [...segmentsTableHeaders, ...segmentsTableCells].forEach(element => {
-            element.style.opacity = '0.5';
-            element.style.cursor = 'not-allowed';
-            element.title = '1st-party risk data not available for this area';
+        this.#setRiskColumnAvailability(this.#hasFirstPartyData, {
+            cellClass: 'table-success',
+            tabId: 'first-party-risk-tab',
+            labelIds: ['first-party-label-totals', 'first-party-label-segments'],
+            reason: '1st-party risk data not available for this area',
         });
     }
 
     /**
-    * enableFirstPartyRiskUI method:
-    *   Enables all 1st-party risk UI elements when data supports it.
+    * setRiskColumnAvailability method:
+    *   Marks one risk column as unavailable for the selected area: the header
+    *   label says so, its cells gray out and its settings tab is closed.
     */
-    #enableFirstPartyRiskUI() {
-        // Enable 1st-party risk tab
-        const firstPartyTab = document.getElementById('first-party-risk-tab');
-        if (firstPartyTab) {
-            firstPartyTab.disabled = false;
-            firstPartyTab.classList.remove('disabled');
-            firstPartyTab.style.opacity = '1';
-            firstPartyTab.style.cursor = 'pointer';
+    #setRiskColumnAvailability(available, {cellClass, tabId, labelIds, reason}) {
+        let tab = document.getElementById(tabId);
+        if (tab) {
+            tab.disabled = !available;
+            tab.classList.toggle('disabled', !available);
+            tab.style.opacity = available ? '1' : '0.5';
+            tab.style.cursor = available ? 'pointer' : 'not-allowed';
+            if (!available && tab.classList.contains('active')) {
+                bootstrap.Tab.getOrCreateInstance(document.getElementById('ground-risk-tab')).show();
+            }
         }
 
-        const totalsLabel = document.getElementById('first-party-label-totals');
-        const segmentsLabel = document.getElementById('first-party-label-segments');
-        if (totalsLabel) {
-            totalsLabel.textContent = '';
-        }
-        if (segmentsLabel) {
-            segmentsLabel.textContent = '';
+        for (let id of labelIds) {
+            document.getElementById(id).textContent = available ? '' : 'N/A for this area';
         }
 
-        // Restore 1st-party risk columns in totals table
-        const totalsTableHeaders = document.querySelectorAll('#totals-table-header .table-success');
-        const totalsTableCells = document.querySelectorAll('#totals-table tbody .table-success');
-        [...totalsTableHeaders, ...totalsTableCells].forEach(element => {
-            element.style.opacity = '1';
-            element.style.cursor = 'default';
-            element.title = '';
+        for (let selector of [`#totals-table .${cellClass}`, `#segments-table .${cellClass}`]) {
+            for (let cell of document.querySelectorAll(selector)) {
+                cell.style.opacity = available ? '1' : '0.5';
+                cell.style.cursor = available ? 'default' : 'not-allowed';
+                cell.title = available ? '' : reason;
+            }
+        }
+    }
+
+    /**
+    * loadWindData method:
+    *   Reads the wall-collision layer of the selected area, when a CFD
+    *   simulation covers it. A missing or unreadable file only disables the
+    *   layer; the rest of the tool keeps working.
+    */
+    async #loadWindData() {
+        if (this.#windDataUrl) {
+            try {
+                this.#windCollision = await $.getJSON(this.#windDataUrl);
+            } catch (error) {
+                console.error('Error fetching wind collision data:', error);
+            }
+        }
+        if (this.#lifecycleController.signal.aborted) return;
+
+        this.#windSpeedBins = this.#windMetadata().speed_bins_mps ?? [];
+        this.#hasWindData = this.#windCollision != null
+            && (this.#windCollision.features ?? []).length > 0;
+        let defaultIndex = this.#windSpeedBins.indexOf(Visualization.#DEFAULT_STATION_WIND_MPS);
+        this.#windSettings.speedIndex = defaultIndex >= 0 ? defaultIndex : 0;
+        this.#windSettings.speedMps = this.#windSpeedBins[this.#windSettings.speedIndex] ?? null;
+
+        if (this.#hasWindData) {
+            try {
+                this.#windRtree = Helpers.createRTree(this.#windCollision.features);
+            } catch (error) {
+                console.error('Error creating R-Tree of the wind collision data:', error);
+            }
+        }
+
+        this.#initializeWindControls();
+    }
+
+    /**
+    * windMetadata method:
+    *   Returns the description the exporter wrote next to the cells.
+    */
+    #windMetadata() {
+        return this.#windCollision ? (this.#windCollision.liu_qra ?? {}) : {};
+    }
+
+    /**
+    * initializeWindControls method:
+    *   Connects the wind collision settings to the map layer. Controls stay
+    *   disabled while the selected area has no CFD coverage.
+    */
+    #initializeWindControls() {
+        const {signal} = this.#lifecycleController;
+        if (signal.aborted) return;
+
+        let resistanceSelect = document.getElementById('wind-resistance-select');
+        let modeInputs = document.querySelectorAll('input[name="wind_mode"]');
+        let windSpeedSlider = document.getElementById('wind-speed-slider');
+
+        let resistances = this.#windMetadata().drone_resist_speeds_mps ?? [];
+        if (resistances.length > 0 && !resistances.includes(this.#windSettings.resistance)) {
+            this.#windSettings.resistance = resistances[0];
+        }
+        resistanceSelect.innerHTML = '';
+        for (let resistance of resistances) {
+            let option = document.createElement('option');
+            option.value = resistance;
+            option.textContent = `${resistance} m/s`;
+            option.selected = resistance === this.#windSettings.resistance;
+            resistanceSelect.appendChild(option);
+        }
+        resistanceSelect.disabled = !this.#hasWindData;
+        resistanceSelect.addEventListener('change', (event) => {
+            this.#windSettings.resistance = Number(event.target.value);
+            this.#refreshWindLayer();
+        }, {signal});
+
+        for (let input of modeInputs) {
+            input.disabled = !this.#hasWindData
+                || (input.value === 'scenario' && this.#windSpeedBins.length < 2);
+            input.checked = input.value === this.#windSettings.mode;
+            input.addEventListener('change', (event) => {
+                this.#windSettings.mode = event.target.value;
+                this.#updateWindSpeedSliderState();
+                this.#refreshWindLayer();
+            }, {signal});
+        }
+
+        if (this.#windSpeedBins.length > 1) {
+            const slider = noUiSlider.create(windSpeedSlider, {
+                start: [this.#windSettings.speedIndex],
+                step: 1,
+                tooltips: {
+                    to: (value) => `${this.#windSpeedBins[Math.round(value)]} m/s`,
+                },
+                connect: 'lower',
+                range: {
+                'min': [0],
+                'max': [this.#windSpeedBins.length - 1]
+                },
+            });
+            slider.on('change', this.#onWindSpeedSliderChange.bind(this));
+        }
+        this.#updateWindSpeedSliderState();
+        this.#computeTotalStatistics();
+        this.#updateWindLegend();
+        this.#setRiskColumnAvailability(this.#hasWindData, {
+            cellClass: 'table-secondary',
+            tabId: 'wind-risk-tab',
+            labelIds: ['wind-label-totals', 'wind-label-segments'],
+            reason: 'No CFD wind simulation covers this area',
         });
+    }
 
-        // Restore 1st-party risk columns in segments table
-        const segmentsTableHeaders = document.querySelectorAll('#segment-totals-table-header .table-success');
-        const segmentsTableCells = document.querySelectorAll('#segments-table tbody .table-success');
-        [...segmentsTableHeaders, ...segmentsTableCells].forEach(element => {
-            element.style.opacity = '1';
-            element.style.cursor = 'default';
-            element.title = '';
-        });
+    /**
+    * onWindSpeedSliderChange method:
+    *   Applies the station wind speed picked with the slider.
+    */
+    #onWindSpeedSliderChange(values, handle) {
+        this.#windSettings.speedIndex = Math.round(values[handle]);
+        this.#windSettings.speedMps = this.#windSpeedBins[this.#windSettings.speedIndex];
+        this.#refreshWindLayer();
+    }
+
+    /**
+    * updateWindSpeedSliderState method:
+    *   The station wind speed only means anything for the scenario mode, so the
+    *   whole setting is hidden while the observed record is shown.
+    */
+    #updateWindSpeedSliderState() {
+        document.getElementById('wind-speed-col').hidden =
+            !(this.#hasWindData && this.#windSettings.mode === 'scenario');
+    }
+
+    #updateWindHeight() {
+        const info = document.getElementById('wind-height-info');
+        if (!this.#hasWindData) {
+            info.textContent = 'No CFD wind simulation covers this area.';
+            return;
+        }
+        const heights = this.#windMetadata().heights_m;
+        const heightIndex = Helpers.nearestWindHeightIndex(heights, this.#rectangleWidth);
+        if (heightIndex !== this.#windSettings.heightIndex) {
+            this.#windSettings.heightIndex = heightIndex;
+            this.#windGeoJSONLayer?.setStyle(Helpers.windCollisionStyling(this.#windSettings));
+        }
+        info.textContent = `Map CFD: ${heights[heightIndex]} m above ground`;
+    }
+
+    /**
+    * windSampleStepMeters method:
+    *   A quarter of the source CFD cell size, keeping the sample step well
+    *   inside one cell of the piecewise-constant probability field.
+    */
+    #windSampleStepMeters() {
+        let cellSize = Number((this.#windMetadata().cfd_grid ?? {}).cell_size_m);
+        return Number.isFinite(cellSize) && cellSize > 0 ? cellSize / 4 : 2;
+    }
+
+    /**
+    * windCellAt method:
+    *   Finds the source CFD cell holding a route point, or -1 where the
+    *   simulation has none. The cells tile the domain, so the first hit is it.
+    */
+    #windCellAt(point) {
+        for (let id of Helpers.treeBboxIntersect([point], this.#windRtree)) {
+            if (turf.booleanPointInPolygon(point, this.#windCollision.features[id])) {
+                return id;
+            }
+        }
+        return -1;
+    }
+
+    /**
+    * windRouteSamples method:
+    *   Walks one segment's centre line and returns the source CFD cell under
+    *   every sample point, with the distance between samples. Caching cells
+    *   rather than probabilities keeps the cache across wind readings.
+    */
+    #windRouteSamples(edge) {
+        // Keyed on the coordinates, not on the array `setLatLngs` rebuilds on
+        // every edit, so an altitude-only change keeps the samples.
+        let key = JSON.stringify(edge.polyline.getLatLngs());
+        let cached = this.#windSampleCache.get(edge);
+        if (cached && cached.key === key) {
+            return cached.samples;
+        }
+
+        let samples = {cellIds: [], segmentDistances: []};
+        let line = edge.polyline.toGeoJSON();
+        let lineLength = turf.length(line, {units: 'meters'});
+        if (lineLength > 0) {
+            let stepCount = Math.max(1, Math.ceil(lineLength / this.#windSampleStepMeters()));
+            let stepLength = lineLength / stepCount;
+            for (let step = 0; step <= stepCount; step++) {
+                let point = turf.along(line, step * stepLength, {units: 'meters'});
+                samples.cellIds.push(this.#windCellAt(point));
+                if (step > 0) {
+                    samples.segmentDistances.push(stepLength);
+                }
+            }
+        }
+
+        this.#windSampleCache.set(edge, {key, samples});
+        return samples;
+    }
+
+    /**
+    * windEquivalentDistance method:
+    *   Integrates the unsafe-wind probability sampled along the centre line.
+    */
+    #windEquivalentDistance(edges) {
+        if (!this.#hasWindData || !this.#windRtree) {
+            return null;
+        }
+
+        let exposure = 0;
+        for (let edge of edges) {
+            let samples = this.#windRouteSamples(edge);
+            if (samples.cellIds.length < 2) {
+                continue;
+            }
+            const heightIndex = Helpers.nearestWindHeightIndex(this.#windMetadata().heights_m, edge.altitude);
+            const probabilities = samples.cellIds.map((cellId) => cellId < 0 ? null
+                : Helpers.windCollisionValue(this.#windCollision.features[cellId], this.#windSettings, heightIndex));
+            if (probabilities.some((value) => value === null)) return null;
+            exposure += Helpers.equivalentDistance(probabilities, samples.segmentDistances);
+        }
+
+        return exposure;
+    }
+
+    /**
+    * refreshWindLayer method:
+    *   Redraws the wind collision choropleth with the current settings.
+    */
+    #refreshWindLayer() {
+        if (this.#windGeoJSONLayer) {
+            this.#windGeoJSONLayer.setStyle(Helpers.windCollisionStyling(this.#windSettings));
+        }
+        this.#updateWindLegend();
+        this.#computeTotalStatistics();
+        for (let edge of this.#edgesList) {
+            this.#addSegmentRow(edge);
+        }
+        if (this.#segmentsTableVisible) {
+            this.#refreshSegmentColors();
+        }
+    }
+
+    /**
+    * updateWindLegend method:
+    *   Draws the colour steps of the active wind reading, so the legend always
+    *   matches the scale the map is drawn with.
+    */
+    #updateWindLegend() {
+        let caption = document.getElementById('wind-legend-caption');
+        let legend = document.getElementById('wind-legend');
+
+        caption.textContent = this.#windSettings.mode === 'empirical'
+            ? "Share of the observed wind record during which the source CFD cell reaches a building wall within the critical time:"
+            : "Source CFD cells that reach a building wall within the critical time at the selected station wind speed:";
+
+        legend.innerHTML = '';
+        let steps = Helpers.windCollisionScale(this.#windSettings.mode).slice().reverse();
+        for (let step of steps) {
+            let swatch = document.createElement('span');
+            swatch.className = 'me-1';
+            swatch.style = `display:inline-block;width:18px;height:12px;background:${step.color};`;
+            let label = document.createElement('span');
+            label.className = 'me-3';
+            label.textContent = step.label;
+            legend.appendChild(swatch);
+            legend.appendChild(label);
+        }
     }
 
     /**
@@ -377,21 +643,15 @@ class Visualization {
     */
     async #initializeMap() {
         await this.#initializeData();
+        if (this.#lifecycleController.signal.aborted) return;
 
-        let groundLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 20,
-            attribution: '&copy <a href="http://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://www.lantmateriet.se/en/">Lantmäteriet</a>'
-        });
-
-        let airLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 20,
-            attribution: '&copy <a href="http://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://www.lantmateriet.se/en/">Lantmäteriet</a>'
-        });
-
-        let firstPartyLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 20,
-            attribution: '&copy <a href="http://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://www.lantmateriet.se/en/">Lantmäteriet</a>'
-        });
+        // One base layer per risk view, so the layer control doubles as the view switch.
+        let [groundLayer, airLayer, firstPartyLayer, windLayer] = Array.from({length: 4}, () =>
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 20,
+                attribution: '&copy <a href="http://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://www.lantmateriet.se/en/">Lantmäteriet</a>'
+            })
+        );
 
         this.#map = L.map('map', {
             doubleClickZoom: false,
@@ -404,11 +664,20 @@ class Visualization {
         if (this.#hasFirstPartyData) {
             baseLayers[Layers.FirstParty] = firstPartyLayer;
         }
+        if (this.#hasWindData) {
+            baseLayers[Layers.Wind] = windLayer;
+        }
         let layerControl = L.control.layers(baseLayers, null, {collapsed: false}).addTo(this.#map);
 
         let groundGeoJSONLayer = L.geoJSON(this.#population, {style: Helpers.groundStyling}).addTo(this.#map);
         let airGeoJSONLayer = L.geoJSON(this.#population, {style: Helpers.airStyling});
         let firstPartyGeoJSONLayer = L.geoJSON(this.#population, {style: Helpers.firstPartyStyling});
+        this.#windGeoJSONLayer = this.#hasWindData
+            ? L.geoJSON(this.#windCollision, {
+                style: Helpers.windCollisionStyling(this.#windSettings),
+                renderer: L.canvas({padding: 0.5}),
+            })
+            : null;
 
         this.#groundBuffersUnionGeoJsonLayers.addTo(this.#map);
         this.#nodesGeoJsonLayersList.addTo(this.#map);
@@ -421,6 +690,9 @@ class Visualization {
             airGeoJSONLayer.remove();
             if (this.#hasFirstPartyData) {
                 firstPartyGeoJSONLayer.remove();
+            }
+            if (this.#windGeoJSONLayer) {
+                this.#windGeoJSONLayer.remove();
             }
             this.#groundBuffersUnionGeoJsonLayers.remove();
             this.#airBuffersUnionGeoJsonLayers.remove();
@@ -440,6 +712,17 @@ class Visualization {
                 firstPartyGeoJSONLayer.addTo(this.#map);
                 this.#groundBuffersUnionGeoJsonLayers.addTo(this.#map);
                 tabIdToActivate = '#first-party-risk-tab';
+            } else if (e.name === Layers.Wind && this.#windGeoJSONLayer) {
+                this.#windGeoJSONLayer.addTo(this.#map);
+                this.#groundBuffersUnionGeoJsonLayers.addTo(this.#map);
+                // The CFD domain is a ~1.7 km square whose cells are smaller
+                // than a pixel at the default zoom, so zoom to it unless the
+                // view is already inside the domain.
+                let windBounds = this.#windGeoJSONLayer.getBounds();
+                if (!windBounds.contains(this.#map.getBounds())) {
+                    this.#map.fitBounds(windBounds);
+                }
+                tabIdToActivate = '#wind-risk-tab';
             }
             this.#edgesGeoJsonLayersList.addTo(this.#map);
 
@@ -464,10 +747,21 @@ class Visualization {
     *   Destroys the map so that the widget can be reinitialized.
     */
     deinitializeMap() {
-        // this.#map.off();
+        if (this.#lifecycleController.signal.aborted) return;
+        this.#lifecycleController.abort();
+        clearTimeout(this.#timeoutId);
+        for (const worker of this.#workers) worker.terminate();
+        this.#workers.clear();
+        for (const [, slider] of this.#sliderRegistry()) {
+            slider?.noUiSlider?.destroy();
+        }
         if(this.#map != undefined) {
             this.#map.remove();
         }
+        this.#segmentsTableElement.querySelector('tbody').replaceChildren();
+        this.#segmentsTableContainer.style.display = 'none';
+        this.#toggleSegmentsTableButton.textContent = 'Show';
+        this.#hideSpinner();
     }
 
     /**
@@ -477,7 +771,7 @@ class Visualization {
     #initTooltips() {
         let tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
         let tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-          return new bootstrap.Tooltip(tooltipTriggerEl)
+          return bootstrap.Tooltip.getOrCreateInstance(tooltipTriggerEl)
         })
     }
 
@@ -741,6 +1035,7 @@ class Visualization {
     */
     async #computeRisks(edges) {
         await this.#initializeData();
+        if (this.#lifecycleController.signal.aborted) return;
 
         if (this.#groundBuffersUnion) {
             if (this.#ongoingComputation < 1) {
@@ -780,6 +1075,7 @@ class Visualization {
                 let subset = blocks.slice(start, end);
 
                 let worker = new Worker(workersUrl);
+                this.#workers.add(worker);
                 let groundBuffers = edges.map((edge) => {return edge.groundBuffer});
                 let airBuffers = edges.map((edge) => {return edge.airBuffer});
                 let circles = edges.map((edge) => {
@@ -790,6 +1086,7 @@ class Visualization {
                 worker.postMessage([subset, groundBuffers, airBuffers, circles, tileArea]);
 
                 worker.onmessage = function(event) {
+                    if (this.#lifecycleController.signal.aborted) return;
                     let [edgesIntersectedPopulation, circlesPopulations, edgesTimes,
                          edgesAverageSpeeds, edgesMaxPopulations, edgesDroneDensities] = event.data;
 
@@ -860,8 +1157,9 @@ class Visualization {
                             this.#refreshSegmentColors();
                         }
 
-                        workers.forEach(function(worker) {
+                        workers.forEach((worker) => {
                             worker.terminate();
+                            this.#workers.delete(worker);
                         });
                     }
                 }.bind(this);
@@ -917,6 +1215,7 @@ class Visualization {
     *   Computes the totals section statistics and updates the totals table.
     */
     #computeTotalStatistics() {
+        this.#updateWindHeight();
         let totalPopulationAtRisk = this.#edgesList.reduce((a, edge) => a + edge.population, 0);
         let totalLength = this.#edgesList.reduce((a, edge) => a + edge.length, 0);
         let totalArea = this.#edgesList.reduce((a, edge) => a + edge.groundArea, 0);
@@ -935,12 +1234,14 @@ class Visualization {
         let firstPartyFatalityRate = totalArea ? firstPartyFatalityRateValue.toExponential(2) : 0;
         let totalTime = this.#totalMissionDuration;
 
+        let equivalentDistance = this.#windEquivalentDistance(this.#edgesList)?.toExponential(2) ?? 'N/A';
+
         let cells = this.#totalsTableElement.querySelector('tbody').querySelector('tr').querySelectorAll('td');
 
         let data = [Math.ceil(totalLength), Math.ceil(totalTime/60), Math.ceil(totalPopulationAtRisk),
                     Math.ceil(totalArea), efr, exposedDensity, maxExposedDensity, this.#totalNMAC_rate,
                     expectedNMAC, this.#totalFirstPartyNMAC_rate, expectedFirstPartyNMAC,
-                    firstPartyFatalityRate];
+                    firstPartyFatalityRate, equivalentDistance];
 
         if (this.#ongoingComputation < 1) {
             for (let i = 0; i < cells.length; i++) {
@@ -977,7 +1278,11 @@ class Visualization {
                                   (edge.expectedFirstPartyNMAC || 0).toExponential(2),
                                   segmentFirstPartyFatalityRate.toExponential(2)];
 
-        let data = generalData.concat(groundRiskData, airRiskData, firstPartyRiskData);
+        const heights = this.#windMetadata().heights_m ?? [];
+        const height = heights[Helpers.nearestWindHeightIndex(heights, edge.altitude)];
+        const windDistance = this.#windEquivalentDistance([edge])?.toExponential(2) ?? 'N/A';
+        let windRiskData = [height === undefined ? 'N/A' : `${windDistance} (CFD ${height} m)`];
+        let data = generalData.concat(groundRiskData, airRiskData, firstPartyRiskData, windRiskData);
 
         if (this.#edgesList.length === rows.length) {
             // edge already exist
@@ -1005,6 +1310,7 @@ class Visualization {
             this.#addDataBlockToRow(newRow, groundRiskData, 'table-warning');
             this.#addDataBlockToRow(newRow, airRiskData, 'table-primary');
             this.#addDataBlockToRow(newRow, firstPartyRiskData, 'table-success');
+            this.#addDataBlockToRow(newRow, windRiskData, 'table-secondary');
 
             let cells = newRow.querySelectorAll('td');
             this.#applyEFRStyle(cells[7], segmentEFRValue);
@@ -1199,29 +1505,32 @@ class Visualization {
         this.#computeRisksDebounced(this.#edgesList);
     }
 
-        /**
+    /**
     * initializeGlobalAltitudeSlider method:
-    *   Creates one slider for modifying the edge's altitudes globally.
+    *   Creates synchronized mission altitude sliders in the Ground and Wind tabs.
     *   Edges whose altitude is changed manually won't be affected.
     */
     #initializeGlobalAltitudeSlider() {
         this.#globalAltitudeSlider = document.getElementById('global-altitude-slider');
+        this.#windAltitudeSlider = document.getElementById('wind-altitude-slider');
 
-        if (!this.#globalAltitudeSlider.noUiSlider) {
-            noUiSlider.create(this.#globalAltitudeSlider, {
-                start: [this.#rectangleWidth],
-                step: 1,
-                tooltips: {
-                    to: (value) => Math.round(value),
-                },
-                connect: 'lower',
-                range: {
-                'min': [10],
-                'max': [1200]
-                },
-            });
+        for (const slider of [this.#globalAltitudeSlider, this.#windAltitudeSlider]) {
+            if (!slider.noUiSlider) {
+                noUiSlider.create(slider, {
+                    start: [this.#rectangleWidth],
+                    step: 1,
+                    tooltips: {
+                        to: (value) => Math.round(value),
+                    },
+                    connect: 'lower',
+                    range: {
+                    'min': [10],
+                    'max': [1200]
+                    },
+                });
+            }
+            slider.noUiSlider.on('change', this.#onGlobalAltitudeSliderChange.bind(this));
         }
-        this.#globalAltitudeSlider.noUiSlider.on('change', this.#onGlobalAltitudeSliderChange.bind(this));
     }
 
     /**
@@ -1281,7 +1590,8 @@ class Visualization {
             return;
         }
         this.#mtbfInput.value = this.#mtbfFlightHours;
-        this.#mtbfInput.addEventListener('input', this.#onMTBFInputChange.bind(this));
+        this.#mtbfInput.addEventListener('input', this.#onMTBFInputChange.bind(this),
+            {signal: this.#lifecycleController.signal});
     }
 
     #onMTBFInputChange(event) {
@@ -1457,7 +1767,11 @@ class Visualization {
     *   Upon slider move, updates altitude for each edge whose altitude not manually changed.
     */
     #onGlobalAltitudeSliderChange(values, handle) {
-        let newAltitude = values[handle];
+        let newAltitude = Math.floor(Number(values[handle]));
+        this.#rectangleWidth = newAltitude;
+        this.#globalAltitudeSlider.noUiSlider.set(newAltitude);
+        this.#windAltitudeSlider.noUiSlider.set(newAltitude);
+        this.#updateWindHeight();
         let affectedEdges = [];
 
         for (let edge of this.#edgesList) {
@@ -1482,7 +1796,9 @@ class Visualization {
     }
 
     #initializeSegmentExtensionCheckbox() {
-        this.#segmentsExtensionCheckbox.addEventListener('change', this.#onSegmentExtensionCheckboxChange.bind(this));
+        this.#segmentsExtensionCheckbox.checked = false;
+        this.#segmentsExtensionCheckbox.addEventListener('change', this.#onSegmentExtensionCheckboxChange.bind(this),
+            {signal: this.#lifecycleController.signal});
     }
 
     #initializeSegmentsTableToggle() {
@@ -1497,7 +1813,7 @@ class Visualization {
                 this.#toggleSegmentsTableButton.textContent = 'Show';
                 this.#applySingleColorSegments();
             }
-        });
+        }, {signal: this.#lifecycleController.signal});
     }
 
     #applyMultiColorSegments() {
@@ -1525,6 +1841,8 @@ class Visualization {
             return edge.NMAC_rate || 0;
         } else if (this.#activeLayer === Layers.FirstParty) {
             return edge.firstPartyNMAC_rate || 0;
+        } else if (this.#activeLayer === Layers.Wind) {
+            return this.#windEquivalentDistance([edge]);
         }
         return edge.population || 0;
     }
@@ -1534,11 +1852,15 @@ class Visualization {
             return Visualization.#RISK_RANGES.air;
         } else if (this.#activeLayer === Layers.FirstParty) {
             return Visualization.#RISK_RANGES.firstParty;
+        } else if (this.#activeLayer === Layers.Wind) {
+            return [0, Math.max(0, ...this.#edgesList.map((edge) => this.#windEquivalentDistance([edge]))
+                .filter(Number.isFinite))];
         }
         return Visualization.#RISK_RANGES.ground;
     }
 
     #valueToRiskColor(value, min, max) {
+        if (value === null) return '#6c757d';
         if (!isFinite(min) || !isFinite(max) || max === min) {
             return '#0d6efd';
         }
@@ -1584,6 +1906,7 @@ class Visualization {
     #sliderRegistry() {
         return [
             ['global-altitude-slider', this.#globalAltitudeSlider, this.#onGlobalAltitudeSliderChange],
+            ['wind-altitude-slider', this.#windAltitudeSlider, this.#onGlobalAltitudeSliderChange],
             ['nmac-slider', this.#NMAC_Slider, this.#onNMAC_sliderChange],
             ['nmac-slider-fp', this.#NMAC_SliderFP, this.#onNMAC_sliderChange],
             ['uav-speed-slider', this.#speedSlider, this.#onUavSpeedSliderChange],
@@ -1594,6 +1917,7 @@ class Visualization {
             ['other-drone-speed-slider', this.#otherDroneSpeedSlider, this.#onOtherDroneSpeedSliderChange],
             ['people-in-vehicle-slider', this.#peopleInVehicleSlider, this.#onPeopleInVehicleSliderChange],
             ['mitigation-factor-slider', this.#mitigationFactorSlider, this.#onMitigationFactorSliderChange],
+            ['wind-speed-slider', document.getElementById('wind-speed-slider'), this.#onWindSpeedSliderChange],
         ];
     }
 
@@ -1618,6 +1942,8 @@ class Visualization {
         const settings = {
             selectedArea: this.#selectedArea,
             segmentExtensionEnabled: Boolean(this.#segmentsExtensionCheckbox && this.#segmentsExtensionCheckbox.checked),
+            windMode: this.#windSettings.mode,
+            windResistance: this.#windSettings.resistance,
         };
         return { waypoints, sliders, settings };
     }
@@ -1665,6 +1991,8 @@ class Visualization {
             Visualization.#dataToKml(`${KML_DATA_PREFIX}version`, '1'),
             Visualization.#dataToKml(`${KML_DATA_PREFIX}selected-area`, data.settings.selectedArea),
             Visualization.#dataToKml(`${KML_SETTING_PREFIX}segment-extension-enabled`, data.settings.segmentExtensionEnabled),
+            Visualization.#dataToKml(`${KML_SETTING_PREFIX}wind-mode`, data.settings.windMode),
+            Visualization.#dataToKml(`${KML_SETTING_PREFIX}wind-resistance`, data.settings.windResistance),
             ...Object.entries(data.sliders || {}).map(([id, value]) => {
                 return Visualization.#dataToKml(`${KML_SLIDER_PREFIX}${id}`, value);
             }),
@@ -1940,17 +2268,30 @@ ${routePlacemark}
         if (!settings) {
             return;
         }
-        let value = undefined;
-        if (Object.prototype.hasOwnProperty.call(settings, 'segment-extension-enabled')) {
-            value = settings['segment-extension-enabled'];
-        } else if (Object.prototype.hasOwnProperty.call(settings, 'segmentExtensionEnabled')) {
-            value = settings.segmentExtensionEnabled;
+
+        const extensionEnabled = settings['segment-extension-enabled'] ?? settings.segmentExtensionEnabled;
+        if (extensionEnabled !== undefined) {
+            this.#segmentsExtensionCheckbox.checked = Visualization.#parseBoolean(extensionEnabled);
+            this.#onSegmentExtensionCheckboxChange();
         }
-        if (value === undefined) {
-            return;
+
+        // Driving the wind controls the way a click does keeps the settings, the
+        // legend and the totals in step, and an unknown value simply finds no
+        // control to change.
+        const mode = settings['wind-mode'] ?? settings.windMode;
+        const modeInput = [...document.querySelectorAll('input[name="wind_mode"]')]
+            .find((input) => input.value === mode && !input.disabled);
+        if (modeInput) {
+            modeInput.checked = true;
+            modeInput.dispatchEvent(new Event('change'));
         }
-        this.#segmentsExtensionCheckbox.checked = Visualization.#parseBoolean(value);
-        this.#onSegmentExtensionCheckboxChange();
+
+        const resistanceSelect = document.getElementById('wind-resistance-select');
+        const resistance = String(settings['wind-resistance'] ?? settings.windResistance);
+        if (!resistanceSelect.disabled && [...resistanceSelect.options].some((o) => o.value === resistance)) {
+            resistanceSelect.value = resistance;
+            resistanceSelect.dispatchEvent(new Event('change'));
+        }
     }
 
     #restoreWaypointDetails(waypoints) {
@@ -2052,22 +2393,25 @@ ${routePlacemark}
         const importBtn = document.getElementById('import-mission-btn');
         const fileInput = document.getElementById('import-mission-input');
         if (!exportBtn || !importBtn || !fileInput) return;
+        const {signal} = this.#lifecycleController;
 
-        exportBtn.addEventListener('click', () => this.#exportMissionToFile());
-        importBtn.addEventListener('click', () => fileInput.click());
+        exportBtn.addEventListener('click', () => this.#exportMissionToFile(), {signal});
+        importBtn.addEventListener('click', () => fileInput.click(), {signal});
         fileInput.addEventListener('change', async (event) => {
             const file = event.target.files && event.target.files[0];
             if (!file) return;
             try {
                 const text = await file.text();
+                if (signal.aborted) return;
                 this.#importMissionText(text);
             } catch (err) {
+                if (signal.aborted) return;
                 console.error('Failed to import mission:', err);
                 alert('Failed to import mission: ' + err.message);
             } finally {
-                fileInput.value = '';
+                if (!signal.aborted) fileInput.value = '';
             }
-        });
+        }, {signal});
     }
 }
 
