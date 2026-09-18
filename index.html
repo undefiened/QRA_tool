@@ -220,8 +220,13 @@
 
                     <!-- Wind Collision Settings Tab -->
                     <div class="tab-pane fade" id="wind-risk" role="tabpanel" aria-labelledby="wind-risk-tab">
+                        <p id="wind-height-info" class="small mb-3" aria-live="polite"></p>
                         <div class="row">
-                            <div class="col-md-4">
+                            <div class="col-md-3">
+                                <label class="form-label">Mission altitude (m) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Shared with Ground Risk. Each segment uses the nearest CFD layer; individually adjusted altitudes stay unchanged."></i></sup></label>
+                                <div id="wind-altitude-slider"></div>
+                            </div>
+                            <div class="col-md-3">
                                 <label class="form-label">Wind reading <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="The observed wind record averages the collision condition over every wind observation of the reference station, so it is an occurrence probability. A fixed station wind speed is a conditional scenario: it shows where the airspace is unsafe while the station reports that speed."></i></sup></label>
                                 <div class="form-check mt-2">
                                     <input class="form-check-input" type="radio" name="wind_mode" id="wind-mode-empirical" value="empirical" checked>
@@ -232,11 +237,11 @@
                                     <label class="form-check-label" for="wind-mode-scenario">Fixed station wind speed</label>
                                 </div>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label">Drone wind resistance <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Horizontal wind speed the drone can hold against. Only the drift beyond this speed is assumed to push the drone towards a wall."></i></sup></label>
                                 <select id="wind-resistance-select" class="form-select" disabled></select>
                             </div>
-                            <div class="col-md-4" id="wind-speed-col">
+                            <div class="col-md-3" id="wind-speed-col">
                                 <label class="form-label">Station wind speed (m/s) <sup><i class="fa-regular fa-circle-question" data-bs-toggle="tooltip" title="Wind speed measured at the reference weather station. The simulated city wind field scales linearly with it. Only used by the fixed wind speed reading."></i></sup></label>
                                 <div id="wind-speed-slider"></div>
                             </div>

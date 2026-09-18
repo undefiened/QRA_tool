@@ -116,6 +116,7 @@ class Visualization {
     #speedSlider;
     #extensionSlider;
     #globalAltitudeSlider;
+    #windAltitudeSlider;
     #droneDensitySlider;
     #droneTrafficDensity;
     #otherDroneSpeedSlider;
@@ -462,6 +463,7 @@ class Visualization {
             slider.on('change', this.#onWindSpeedSliderChange.bind(this));
         }
         this.#updateWindSpeedSliderState();
+        this.#computeTotalStatistics();
         this.#updateWindLegend();
         this.#setRiskColumnAvailability(this.#hasWindData, {
             cellClass: 'table-secondary',
@@ -489,6 +491,21 @@ class Visualization {
     #updateWindSpeedSliderState() {
         document.getElementById('wind-speed-col').hidden =
             !(this.#hasWindData && this.#windSettings.mode === 'scenario');
+    }
+
+    #updateWindHeight() {
+        const info = document.getElementById('wind-height-info');
+        if (!this.#hasWindData) {
+            info.textContent = 'No CFD wind simulation covers this area.';
+            return;
+        }
+        const heights = this.#windMetadata().heights_m;
+        const heightIndex = Helpers.nearestWindHeightIndex(heights, this.#rectangleWidth);
+        if (heightIndex !== this.#windSettings.heightIndex) {
+            this.#windSettings.heightIndex = heightIndex;
+            this.#windGeoJSONLayer?.setStyle(Helpers.windCollisionStyling(this.#windSettings));
+        }
+        info.textContent = `Map CFD: ${heights[heightIndex]} m above ground`;
     }
 
     /**
@@ -555,7 +572,7 @@ class Visualization {
     */
     #windEquivalentDistance(edges) {
         if (!this.#hasWindData || !this.#windRtree) {
-            return 0;
+            return null;
         }
 
         let exposure = 0;
@@ -564,11 +581,11 @@ class Visualization {
             if (samples.cellIds.length < 2) {
                 continue;
             }
-            exposure += Helpers.equivalentDistance(
-                samples.cellIds.map((cellId) => cellId < 0 ? 0
-                    : Helpers.windCollisionValue(this.#windCollision.features[cellId], this.#windSettings)),
-                samples.segmentDistances,
-            );
+            const heightIndex = Helpers.nearestWindHeightIndex(this.#windMetadata().heights_m, edge.altitude);
+            const probabilities = samples.cellIds.map((cellId) => cellId < 0 ? null
+                : Helpers.windCollisionValue(this.#windCollision.features[cellId], this.#windSettings, heightIndex));
+            if (probabilities.some((value) => value === null)) return null;
+            exposure += Helpers.equivalentDistance(probabilities, samples.segmentDistances);
         }
 
         return exposure;
@@ -1198,6 +1215,7 @@ class Visualization {
     *   Computes the totals section statistics and updates the totals table.
     */
     #computeTotalStatistics() {
+        this.#updateWindHeight();
         let totalPopulationAtRisk = this.#edgesList.reduce((a, edge) => a + edge.population, 0);
         let totalLength = this.#edgesList.reduce((a, edge) => a + edge.length, 0);
         let totalArea = this.#edgesList.reduce((a, edge) => a + edge.groundArea, 0);
@@ -1216,8 +1234,7 @@ class Visualization {
         let firstPartyFatalityRate = totalArea ? firstPartyFatalityRateValue.toExponential(2) : 0;
         let totalTime = this.#totalMissionDuration;
 
-        let equivalentDistance = this.#hasWindData
-            ? this.#windEquivalentDistance(this.#edgesList).toExponential(2) : 'N/A';
+        let equivalentDistance = this.#windEquivalentDistance(this.#edgesList)?.toExponential(2) ?? 'N/A';
 
         let cells = this.#totalsTableElement.querySelector('tbody').querySelector('tr').querySelectorAll('td');
 
@@ -1261,8 +1278,10 @@ class Visualization {
                                   (edge.expectedFirstPartyNMAC || 0).toExponential(2),
                                   segmentFirstPartyFatalityRate.toExponential(2)];
 
-        let windRiskData = [this.#hasWindData
-            ? this.#windEquivalentDistance([edge]).toExponential(2) : 'N/A'];
+        const heights = this.#windMetadata().heights_m ?? [];
+        const height = heights[Helpers.nearestWindHeightIndex(heights, edge.altitude)];
+        const windDistance = this.#windEquivalentDistance([edge])?.toExponential(2) ?? 'N/A';
+        let windRiskData = [height === undefined ? 'N/A' : `${windDistance} (CFD ${height} m)`];
         let data = generalData.concat(groundRiskData, airRiskData, firstPartyRiskData, windRiskData);
 
         if (this.#edgesList.length === rows.length) {
@@ -1486,29 +1505,32 @@ class Visualization {
         this.#computeRisksDebounced(this.#edgesList);
     }
 
-        /**
+    /**
     * initializeGlobalAltitudeSlider method:
-    *   Creates one slider for modifying the edge's altitudes globally.
+    *   Creates synchronized mission altitude sliders in the Ground and Wind tabs.
     *   Edges whose altitude is changed manually won't be affected.
     */
     #initializeGlobalAltitudeSlider() {
         this.#globalAltitudeSlider = document.getElementById('global-altitude-slider');
+        this.#windAltitudeSlider = document.getElementById('wind-altitude-slider');
 
-        if (!this.#globalAltitudeSlider.noUiSlider) {
-            noUiSlider.create(this.#globalAltitudeSlider, {
-                start: [this.#rectangleWidth],
-                step: 1,
-                tooltips: {
-                    to: (value) => Math.round(value),
-                },
-                connect: 'lower',
-                range: {
-                'min': [10],
-                'max': [1200]
-                },
-            });
+        for (const slider of [this.#globalAltitudeSlider, this.#windAltitudeSlider]) {
+            if (!slider.noUiSlider) {
+                noUiSlider.create(slider, {
+                    start: [this.#rectangleWidth],
+                    step: 1,
+                    tooltips: {
+                        to: (value) => Math.round(value),
+                    },
+                    connect: 'lower',
+                    range: {
+                    'min': [10],
+                    'max': [1200]
+                    },
+                });
+            }
+            slider.noUiSlider.on('change', this.#onGlobalAltitudeSliderChange.bind(this));
         }
-        this.#globalAltitudeSlider.noUiSlider.on('change', this.#onGlobalAltitudeSliderChange.bind(this));
     }
 
     /**
@@ -1745,7 +1767,11 @@ class Visualization {
     *   Upon slider move, updates altitude for each edge whose altitude not manually changed.
     */
     #onGlobalAltitudeSliderChange(values, handle) {
-        let newAltitude = values[handle];
+        let newAltitude = Math.floor(Number(values[handle]));
+        this.#rectangleWidth = newAltitude;
+        this.#globalAltitudeSlider.noUiSlider.set(newAltitude);
+        this.#windAltitudeSlider.noUiSlider.set(newAltitude);
+        this.#updateWindHeight();
         let affectedEdges = [];
 
         for (let edge of this.#edgesList) {
@@ -1827,12 +1853,14 @@ class Visualization {
         } else if (this.#activeLayer === Layers.FirstParty) {
             return Visualization.#RISK_RANGES.firstParty;
         } else if (this.#activeLayer === Layers.Wind) {
-            return [0, Math.max(0, ...this.#edgesList.map((edge) => this.#windEquivalentDistance([edge])))];
+            return [0, Math.max(0, ...this.#edgesList.map((edge) => this.#windEquivalentDistance([edge]))
+                .filter(Number.isFinite))];
         }
         return Visualization.#RISK_RANGES.ground;
     }
 
     #valueToRiskColor(value, min, max) {
+        if (value === null) return '#6c757d';
         if (!isFinite(min) || !isFinite(max) || max === min) {
             return '#0d6efd';
         }
@@ -1878,6 +1906,7 @@ class Visualization {
     #sliderRegistry() {
         return [
             ['global-altitude-slider', this.#globalAltitudeSlider, this.#onGlobalAltitudeSliderChange],
+            ['wind-altitude-slider', this.#windAltitudeSlider, this.#onGlobalAltitudeSliderChange],
             ['nmac-slider', this.#NMAC_Slider, this.#onNMAC_sliderChange],
             ['nmac-slider-fp', this.#NMAC_SliderFP, this.#onNMAC_sliderChange],
             ['uav-speed-slider', this.#speedSlider, this.#onUavSpeedSliderChange],

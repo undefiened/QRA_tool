@@ -141,6 +141,17 @@ function windCollisionScale(mode) {
     return mode === 'empirical' ? windProbabilityScale : windScenarioScale;
 }
 
+// Ties use the lower layer. Altitudes outside the data range use an end layer.
+function nearestWindHeightIndex(heights, altitude) {
+    if (!Number.isFinite(altitude) || heights.length === 0) return -1;
+    return heights.reduce((nearest, height, index) => {
+        let distance = Math.abs(height - altitude);
+        let bestDistance = Math.abs(heights[nearest] - altitude);
+        return distance < bestDistance || (distance === bestDistance && height < heights[nearest])
+            ? index : nearest;
+    }, 0);
+}
+
 /**
 * windCollisionValue method:
 *   Reads the wall-collision value of a cell for the current wind settings.
@@ -149,18 +160,18 @@ function windCollisionScale(mode) {
 *   selected station speed is compared directly with that cell's minimum
 *   required station-wind speed.
 */
-function windCollisionValue(feature, settings) {
+function windCollisionValue(feature, settings, heightIndex = settings.heightIndex) {
     let properties = feature.properties;
+    let probability = properties[`p_r${settings.resistance}`]?.[heightIndex];
+    if (!Number.isFinite(probability)) return null;
     if (settings.mode === 'empirical') {
-        return properties[`p_r${settings.resistance}`] ?? 0;
+        return probability;
     }
-    let requiredSpeed = properties[`min_r${settings.resistance}`];
-    let threshold = requiredSpeed === null || requiredSpeed === undefined ? NaN : Number(requiredSpeed);
+    let requiredSpeed = properties[`min_r${settings.resistance}`]?.[heightIndex];
     let stationSpeed = Number(settings.speedMps);
-    if (!Number.isFinite(threshold) || !Number.isFinite(stationSpeed)) {
-        return 0;
-    }
-    return stationSpeed >= threshold ? 1 : 0;
+    if (!Number.isFinite(stationSpeed)) return null;
+    // A valid probability with a null threshold means no wall intersection.
+    return Number.isFinite(requiredSpeed) && stationSpeed >= requiredSpeed ? 1 : 0;
 }
 
 /**
@@ -256,5 +267,5 @@ function treeBboxIntersect(buffers, tree) {
     return Ids
 }
 
-export { groundStyling, airStyling, firstPartyStyling, windCollisionStyling, windCollisionScale, windCollisionValue, equivalentDistance, groundBuffersStyle, airBuffersStyle, convertSpeed, createRTree, treeBboxIntersect };
+export { groundStyling, airStyling, firstPartyStyling, windCollisionStyling, windCollisionScale, windCollisionValue, nearestWindHeightIndex, equivalentDistance, groundBuffersStyle, airBuffersStyle, convertSpeed, createRTree, treeBboxIntersect };
 // ======================================= END OF FILE =======================================
